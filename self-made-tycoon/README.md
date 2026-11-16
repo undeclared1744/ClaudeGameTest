@@ -42,6 +42,16 @@ You get better at finding deals the more of them you do. Checking, buying, fixin
 - **Your skyline:** a night skyline grows with one building for each business you own.
 - **Saving, away earnings and controls** work the same way as in Paper Jam Tycoon.
 
+## Investments: startups, franchising, partnerships
+
+Each one is a single card on the Invest tab with one decision.
+
+- **Startup stakes** (opens at Main Street): one founder pitch at a time. Fund it or pass. Due diligence (5% of the check) tells you whether it's weak, solid or a standout. Most startups fail; a rare one pays 50x to 100x. Results come in 12 to 20 minutes later, and you can back two at once. Funding blind roughly breaks even (about 1.1x); funding only the solid ones after due diligence returns about 1.7x. A bigger fund may offer to buy a promising stake early.
+- **Franchising** (opens at Main Street): turn a business that's at level 10 or more with no problems into a brand, if it's a kind that really gets franchised (diners, gyms, hotels; not hospitals or airlines). Franchisees then open locations by themselves, each paying a fee and a royalty of 30% of a plain level-1 unit's income. The brand can grow to 3 locations per level of the business you franchised, and pays for itself in about 50 minutes at its starting size. A franchisee cutting corners can cost you locations if you look the other way.
+- **Partnerships and private equity** (opens at Regional): join a made-up buyout fund on a big company, or pass. The fund's track record is shown up front: proven, steady, or first-time (riskier). Your share is locked up 20 to 30 minutes and returns about 1.6x on average; a deal can also go bad and return a quarter. Partners may ask for 25% more money to buy a rival.
+
+Startups and deals are sized to about 4 and 10 minutes of your income, so together they add something like a fifth to a third to a careful player's earnings without replacing building the empire. Only profit counts toward tiers and Legacy, the same as selling a business. Retiring starts all three over.
+
 ## Pacing
 
 These are the robot's times when it taps 3 times a second. A person will be slower.
@@ -83,4 +93,5 @@ After editing anything in `src/`, run `python3 build.py`, then commit both `src/
 - `tests/business.py` runs 51 checks on hidden problems, due diligence, all four mini games, repairs and selling, on a Steam Deck sized screen and a phone.
 - `tests/scouting.py` runs 22 checks on Deal sense: XP, every level's perk, and keeping it through retiring and saving.
 - `tests/invest_host.py` runs 18 checks on the investment plug-in point, using a test investment, including that a broken one can't crash the game.
+- `tests/invest_startups.py` (44 checks), `tests/invest_franchising.py` (37) and `tests/invest_partnerships.py` (34) check each of those investment types: unlocking, the decision, payouts, events, the odds over thousands of rolls, broken saves, and the card on a phone.
 - `tests/sim.py` has a robot play 4 hours, both active and idle, and reports the pacing.

@@ -43,6 +43,7 @@ These were real bugs or problems found by the tests or the screenshot review bef
   - Amounts just under a million showed as "$1000K".
   - A buyout offer still paid out for a business you had already sold.
   - The first sale prices let you buy a plain business and sell it straight back at a profit. Sales now go by the business's market price, not its income.
+  - Startups, franchising and partnerships: the first odds for startups paid about 1.9x for anyone who did due diligence, which was too generous; they were tuned to about 1.7x. An investment card stayed blank when another investment unlocked, because the game rebuilds every card and the card thought nothing had changed. Pressing an old "capital call" a second time took your money twice. A big win's pop-up would have been hidden behind "While you were out", so it now waits a moment.
 
 ## What hasn't been tested
 

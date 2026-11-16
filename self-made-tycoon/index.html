@@ -2287,26 +2287,272 @@ function updateInvest(full) {
    Keep everything for this investment in this file. Its tests go in
    tests/invest_crypto.py and run on the built index.html.
    ===================================================================== */
-
 /* =====================================================================
-   INVESTMENT: FRANCHISING  (not built yet)
-   Planned: Turn a business that's doing well into a franchise brand, then earn
-   royalties as franchisees open locations.
+   INVESTMENT: FRANCHISING
+   Turn one of your businesses that's doing well into a franchise BRAND.
+   Other people (franchisees) then pay to open their own locations under
+   your name, and every location sends you a royalty.
 
-   To build it, replace this comment's "not built yet" and call
-   registerInvestment() (see 20-invest.js for every hook), for example:
+   How it plays (one card, one decision):
+     - The card lists your businesses that are ready to franchise: at
+       least level FR.minLevel (the concept is proven) with no problems
+       (nobody buys a franchise with bad reviews or messy books), in a
+       kind of business that really gets franchised (diners and car
+       washes do; hospitals and airlines don't).
+     - Decide: LAUNCH THE BRAND. You pay once for the lawyers, the
+       operations manual and training.
+     - Franchisees then open locations by themselves, one every
+       FR.openSeconds() (faster for small businesses). Each opening pays
+       you a franchise fee, and each open location pays a royalty every
+       second, forever.
+     - How big the brand can grow depends on the flagship: FR.capPerLevel
+       locations per level of the business you franchised. Expanding the
+       flagship lets the brand grow further.
 
-     registerInvestment({
-       id: "franchising", name: "Franchising", order: 60, unlockTier: 2,
-       fresh: () => ({ }),
-       validate: saved => ({ }),
-       earn(seconds) { return 0; },
-       render(card, full) { },
-     });
+   The real-world numbers behind it: a royalty is usually around 6% of a
+   franchisee's sales, which is roughly a third of what a small business
+   keeps as profit. So each location pays you FR.royaltyShare (30%) of
+   what a plain level-1 business of that kind earns.
 
-   Keep everything for this investment in this file. Its tests go in
-   tests/invest_franchising.py and run on the built index.html.
+   Pacing: the launch cost is set so a brand at its starting size pays
+   for itself in about FR.paybackSeconds (50 minutes). That's in line with
+   expanding a business at mid levels, but franchising keeps growing on
+   its own while you do other things.
+
+   If you sell the flagship, the brand stays yours (you own the name,
+   not the store), but it can't grow past the size it had reached.
    ===================================================================== */
+(() => {
+  // ---------- Tuning ----------
+  const FR = {
+    minLevel: 10,            // a business must reach its first doubling to be franchised
+    capPerLevel: 3,          // locations the brand can reach per flagship level...
+    maxCap: 300,             // ...up to this many
+    royaltyShare: 0.3,       // each location pays 30% of a plain level-1 unit's income
+    paybackSeconds: 3000,    // launch cost = this many seconds of royalties at the starting cap
+    feeSeconds: 120,         // each opening pays a fee worth 2 minutes of its royalty
+    // Seconds between openings: a thirtieth of the tier's payback time,
+    // kept between 20 seconds and 2 minutes.
+    openSeconds: tier => Math.min(120, Math.max(20, TIER_PAYBACK[tier] / 30)),
+    rogueSeconds: 180,       // "rogue franchisee" event: enforcing costs 3 minutes of the brand's royalties
+    rogueClose: 0.2,         // ignoring it closes 20% of locations...
+    roguePause: 600,         // ...and stops new openings for 10 minutes
+  };
+  // Kinds of business that really get franchised (ids from INDUSTRIES)
+  const FRANCHISABLE = new Set(["lawn", "detail", "phonefix", "foodtruck", "laundry", "coffee", "diner", "carwash", "garage",
+                                "gym", "hvac", "hardware", "grocery", "insure", "hotel", "storage"]);
+
+  // ---------- Helpers ----------
+  const me = () => inv("franchising");
+  const num = (v, d = 0) => (Number.isFinite(v) ? v : d);
+  // Royalty one open location pays per second. Your income upgrades and
+  // Legacy stars count, the same way they do for your own businesses.
+  const royaltyPer = indId => IND[indId].income * FR.royaltyShare * sectorMult(IND[indId].sector) * globalMult();
+  const brandIncome = br => br.locs * royaltyPer(br.ind);
+  const startCap = b => Math.min(FR.maxCap, b.level * FR.capPerLevel);
+  // Launch cost: based on the base income (no upgrades), so buying an
+  // upgrade doesn't make launching pricier.
+  const launchCost = b => roundNice(IND[b.ind].income * FR.royaltyShare * startCap(b) * FR.paybackSeconds);
+  const hasBrand = indId => me().brands.some(br => br.ind === indId);
+  // Why business b can't be franchised yet ("" = it can)
+  function notReady(b) {
+    if (!FRANCHISABLE.has(b.ind)) return "not a franchise kind of business";
+    if (hasBrand(b.ind)) return "you already franchise this kind";
+    if (b.level < FR.minLevel) return `needs level ${FR.minLevel}`;
+    if (problemsOf(b).length) return "fix its problems first";
+    if (b.selling) return "it's up for sale";
+    return "";
+  }
+  // Businesses ready to franchise, best first (biggest brand you could make)
+  const ready = () => state.biz.filter(b => !notReady(b)).sort((a, b) => launchCost(b) - launchCost(a));
+  // A brand's cap follows its flagship while you still own it
+  function capOf(br) {
+    const flag = state.biz.find(b => b.id === br.flagId);
+    if (flag) br.cap = Math.max(br.cap, startCap(flag));
+    return br.cap;
+  }
+
+  // ---------- The one decision: launch a brand ----------
+  function launch(bizId) {
+    const b = state.biz.find(x => x.id === bizId);
+    if (!b || notReady(b)) { toast(b ? `Can't franchise it: ${notReady(b)}` : "You don't own it any more"); return false; }
+    const cost = launchCost(b);
+    if (cost > state.cash) { toast("Not enough cash to launch the brand"); return false; }
+    state.cash -= cost;
+    me().brands.push({ flagId: b.id, ind: b.ind, name: b.name, locs: 0, cap: startCap(b), prog: 0, pausedUntil: 0, cost, earned: 0 });
+    me().record.launched++;
+    toast(`${b.name} is now a franchise brand. The first franchisee opens in ${duration(FR.openSeconds(IND[b.ind].tier) * 1000)}.`);
+    dirty = true; render(true);
+    return true;
+  }
+
+  // ---------- Earning ----------
+  // Walk through `seconds` of time for every brand: royalties from the
+  // locations open so far, and new locations opening (each with a fee)
+  // as their timers fill. Works the same for one frame or 8 hours away.
+  function earn(seconds) {
+    let total = 0;
+    const now = Date.now();
+    for (const br of me().brands) {
+      const cap = capOf(br), every = FR.openSeconds(IND[br.ind].tier), per = royaltyPer(br.ind);
+      // Openings are paused for part of this stretch after a rogue franchisee
+      const paused = Math.min(seconds, Math.max(0, (br.pausedUntil - now) / 1000));
+      let left = seconds;
+      if (paused > 0) { total += br.locs * per * paused; left -= paused; }
+      // At most one step per opening, so this loop ends quickly even after 8 hours
+      while (left > 0) {
+        if (br.locs >= cap) { total += br.locs * per * left; br.prog = 0; break; }
+        const step = Math.min(left, every - br.prog);
+        total += br.locs * per * step;
+        br.prog += step; left -= step;
+        if (br.prog >= every - 1e-9) {
+          br.prog = 0; br.locs++;
+          total += per * FR.feeSeconds;              // the new franchisee's fee
+          me().record.opened++;
+        }
+      }
+    }
+    if (total > 0) addCash(total);
+    return total;
+  }
+  // Each brand's "earned so far" (for the card's "paid back" chip): the
+  // total from earn() is split by each brand's share of royalty income at
+  // the start of the stretch. Approximate, which is fine for a progress chip.
+  function earnAndTrack(seconds) {
+    const before = me().brands.map(br => brandIncome(br));
+    const sum = before.reduce((a, x) => a + x, 0);
+    const total = earn(seconds);
+    me().brands.forEach((br, i) => { br.earned += sum > 0 ? total * before[i] / sum : total / me().brands.length; });
+    return total;
+  }
+
+  // ---------- Event: a franchisee cutting corners ----------
+  // The real headache of franchising: one bad operator can hurt the name.
+  function rogueEvent() {
+    const big = me().brands.filter(br => br.locs >= 5);
+    if (!big.length) return [];
+    return [() => {
+      const br = pick(big);
+      const fixCost = Math.max(100, brandIncome(br) * FR.rogueSeconds);
+      const close = Math.max(1, Math.ceil(br.locs * FR.rogueClose));
+      return { title: "Franchisee cutting corners", text: `One of your ${br.name} franchisees is skipping your standards and customers are posting about it. ` +
+          `Send in a training team for ${money(fixCost)}, or look the other way (about ${close} locations close and new openings stop for ${FR.roguePause / 60} minutes)?`,
+        options: [
+          { label: `Send the team: ${money(fixCost)}`, yes: true, act: () => {
+              if (state.cash < fixCost) { toast("Couldn't afford it: the bad press spread"); hurt(br, close); return; }
+              state.cash -= fixCost; toast(`${br.name}'s standards are back on track`); } },
+          { label: "Look the other way", act: () => hurt(br, close) },
+        ] };
+    }];
+  }
+  function hurt(br, close) {
+    if (!me().brands.includes(br)) return;
+    br.locs = Math.max(0, br.locs - close);
+    br.prog = 0;
+    br.pausedUntil = Date.now() + FR.roguePause * 1000;
+    me().record.closed += close;
+    toast(`${close} ${br.name} location${close > 1 ? "s" : ""} closed. New openings are on hold.`);
+  }
+
+  // ---------- Drawing the card ----------
+  // Rebuilt only when what's listed changes; numbers update in place.
+  let drawnKey = "", drawnCard = null;
+  function structure() {
+    const s = me();
+    let html = `<h2 class="cond">Franchising</h2>
+      <p class="note">Turn a business that's doing well into a brand. Franchisees open their own locations and pay you a fee plus a royalty from each one.</p>`;
+    for (const br of s.brands) {
+      html += `<div class="biz" data-brand="${br.flagId}">${logoHtml(br.name, IND[br.ind].sector)}
+          <div><h3 class="cond">${esc(br.name)} franchise</h3><div class="sub">${esc(IND[br.ind].name)} brand · launched for ${money(br.cost)}</div></div>
+          <div class="chips"></div><div class="line"></div></div>`;
+    }
+    const list = ready().slice(0, 3);
+    if (list.length) {
+      html += `<h3 class="cond" style="margin:4px 0 0">Ready to franchise</h3>`;
+      for (const b of list) {
+        const cap = startCap(b);
+        html += `<div class="biz" data-ready="${b.id}">${logoHtml(b.name, IND[b.ind].sector)}
+            <div><h3 class="cond">${esc(b.name)}</h3><div class="sub">${esc(IND[b.ind].name)} · Lv ${b.level} · room for ${cap} locations</div></div>
+            <button class="buy" id="fr-launch-${b.id}"><span class="pr">${money(launchCost(b))}</span><small>launch brand</small></button>
+            <div class="line"></div></div>`;
+      }
+    } else {
+      html += `<p class="note">${s.brands.length ? "Nothing else is ready yet. " : ""}To franchise a business, get it to level ${FR.minLevel} with no problems.
+        Food, services, auto, retail, hotels and storage franchise well; one brand per kind of business.</p>`;
+    }
+    return html;
+  }
+  function drawCard(card, full) {
+    if (full) {
+      const html = structure();
+      // Also redraw when the host hands us a brand-new, empty card (it
+      // rebuilds every card when another investment unlocks).
+      if (html !== drawnKey || card !== drawnCard) {
+        drawnKey = html; drawnCard = card;
+        const focusId = document.activeElement?.id;
+        card.innerHTML = html;
+        for (const btn of card.querySelectorAll("[id^='fr-launch-']")) btn.addEventListener("click", () => launch(Number(btn.id.slice(10))));
+        if (focusId && card.querySelector("#" + focusId)) $(focusId).focus();
+      }
+    }
+    const now = Date.now();
+    for (const row of card.querySelectorAll("[data-brand]")) {
+      const br = me().brands.find(x => x.flagId === Number(row.dataset.brand));
+      if (!br) continue;
+      const cap = capOf(br), every = FR.openSeconds(IND[br.ind].tier);
+      let next;
+      if (now < br.pausedUntil) next = `openings on hold for ${duration(br.pausedUntil - now + 999)}`;
+      else if (br.locs >= cap) next = state.biz.some(b => b.id === br.flagId) ? "full: expand the flagship to grow" : "full (you sold the flagship)";
+      else next = `next opens in ${duration((every - br.prog) * 1000 + 999)}`;
+      row.querySelector(".line").textContent = `${money(brandIncome(br))}/sec in royalties · ${next}`;
+      const chips = `<span class="chip ${br.locs ? "good" : ""}">${br.locs} / ${cap} locations</span>` +
+        (br.earned >= br.cost ? `<span class="chip great">Paid for itself</span>` : `<span class="chip">${Math.floor(br.earned / br.cost * 100)}% paid back</span>`);
+      const box = row.querySelector(".chips");
+      if (box.innerHTML !== chips) box.innerHTML = chips;
+    }
+    for (const row of card.querySelectorAll("[data-ready]")) {
+      const b = state.biz.find(x => x.id === Number(row.dataset.ready));
+      if (!b) continue;
+      const can = launchCost(b) <= state.cash;
+      row.classList.toggle("affordable", can);
+      row.querySelector(".buy").setAttribute("aria-disabled", String(!can));
+      row.querySelector(".line").textContent = `${money(royaltyPer(b.ind) * startCap(b))}/sec in royalties once it's full · a location every ${duration(FR.openSeconds(IND[b.ind].tier) * 1000)}`;
+    }
+  }
+
+  // ---------- Register ----------
+  const fresh = () => ({ brands: [], record: { launched: 0, opened: 0, closed: 0 } });
+  registerInvestment({
+    id: "franchising", name: "Franchising", order: 60, unlockTier: 2,
+    fresh,
+    validate(saved) {
+      const out = fresh();
+      const seen = new Set();
+      if (Array.isArray(saved.brands)) for (const br of saved.brands) {
+        // one brand per kind of business, and only kinds we know
+        if (!br || !IND[br.ind] || !FRANCHISABLE.has(br.ind) || seen.has(br.ind)) continue;
+        seen.add(br.ind);
+        const cap = Math.min(FR.maxCap, Math.max(1, num(br.cap, FR.minLevel * FR.capPerLevel) | 0));
+        out.brands.push({ flagId: num(br.flagId) | 0, ind: br.ind, name: String(br.name || IND[br.ind].name),
+          locs: Math.min(cap, Math.max(0, num(br.locs) | 0)), cap, prog: Math.max(0, num(br.prog)),
+          pausedUntil: Math.max(0, num(br.pausedUntil)), cost: Math.max(1, num(br.cost, 1)), earned: Math.max(0, num(br.earned)) });
+      }
+      for (const k in out.record) out.record[k] = Math.max(0, num(saved.record?.[k]));
+      return out;
+    },
+    earn: earnAndTrack,
+    netIncome: () => me().brands.reduce((a, br) => a + brandIncome(br), 0),
+    render: drawCard,
+    events: rogueEvent,
+    stats() {
+      const s = me();
+      if (!s.brands.length) return [];
+      return [["Franchise brands", s.brands.length], ["Franchise locations open", s.brands.reduce((a, br) => a + br.locs, 0)],
+              ["Franchise royalties", money(s.brands.reduce((a, br) => a + brandIncome(br), 0)) + "/sec"]];
+    },
+    test: { FR, FRANCHISABLE, launch, launchCost, notReady, ready, royaltyPer, capOf, earn: earnAndTrack, hurt, rogueEvent },
+  });
+})();
 
 /* =====================================================================
    INVESTMENT: BANK LOANS AND LEVERAGE  (not built yet)
@@ -2327,26 +2573,277 @@ function updateInvest(full) {
    Keep everything for this investment in this file. Its tests go in
    tests/invest_loans.py and run on the built index.html.
    ===================================================================== */
-
 /* =====================================================================
-   INVESTMENT: PARTNERSHIPS AND PRIVATE EQUITY  (not built yet)
-   Planned: Buy a share of a big company with partners, help grow it, and cash out
-   when it sells.
+   INVESTMENT: PARTNERSHIPS AND PRIVATE EQUITY
+   Team up with a private equity fund and other partners to buy a big
+   company together, help grow it, and cash out when it's sold.
 
-   To build it, replace this comment's "not built yet" and call
-   registerInvestment() (see 20-invest.js for every hook), for example:
+   How it plays (one card, one decision):
+     - One deal is on offer at a time: a made-up fund, the company it
+       wants to buy, its plan for it, and how much your share costs.
+     - The fund's TRACK RECORD is shown up front, like in real life:
+       a proven fund is safer, a first-time fund is a wilder ride.
+     - Decide: JOIN THE DEAL or PASS.
+     - Once you're in, your money is locked up for PE.holdMin..holdMax
+       real minutes while the partners work on the company. The card
+       shows what your share is worth along the way (it wobbles).
+     - When the company sells, you get your share of the sale price.
 
-     registerInvestment({
-       id: "partnerships", name: "Partnerships and private equity", order: 80, unlockTier: 3,
-       fresh: () => ({ }),
-       validate: saved => ({ }),
-       earn(seconds) { return 0; },
-       render(card, full) { },
-     });
+   The odds (hidden, rolled when you join): each fund type has a chance
+   of the deal going bad (you get back PE.badMult, 25%) and otherwise a
+   range of returns. Expected return: proven ~1.7x, steady ~1.45x,
+   first-time ~1.7x but with a 1 in 5 chance of losing most of it.
+   A share is about PE.shareSeconds (10 minutes) of your income and is
+   tied up about 25 minutes, so a steady player in deals all the time
+   earns roughly 20% more than from businesses alone: worth doing, not
+   a replacement for building your empire.
 
-   Keep everything for this investment in this file. Its tests go in
-   tests/invest_partnerships.py and run on the built index.html.
+   Money rules: your share leaves your cash when you join. At the exit,
+   only the PROFIT counts as earned (see addProceeds in 06-fixsell.js).
    ===================================================================== */
+(() => {
+  // ---------- Tuning ----------
+  const PE = {
+    shareSeconds: 600,       // your share costs about 10 minutes of your steady income...
+    shareFloor: 0.2,         // ...but at least 20% of your current tier's unlock amount
+    holdMin: 20 * 60,        // seconds your money is locked up
+    holdMax: 30 * 60,
+    nextOffer: 60,           // seconds until a new deal after you pass or cash out
+    staleAfter: 360,         // an offer you leave alone is replaced after 6 minutes
+    badMult: 0.25,           // a deal gone bad returns this much
+    addOnShare: 0.25,        // "capital call" event: put in 25% more...
+    addOnBoost: 0.15,        // ...and the whole deal's return goes up by 0.15x
+  };
+  // Fund types. bad = chance the deal goes bad; otherwise the return is
+  // somewhere between lo and hi (even odds across the range).
+  const FUNDS = [
+    { name: "Proven fund",     weight: 0.3, bad: 0.05, lo: 1.3, hi: 2.3, tone: "good", says: "Every deal in their last fund made money." },
+    { name: "Steady fund",     weight: 0.5, bad: 0.08, lo: 1.1, hi: 2.0, tone: "",     says: "A long, solid track record. Few surprises." },
+    { name: "First-time fund", weight: 0.2, bad: 0.20, lo: 0.9, hi: 3.2, tone: "bad",  says: "Big promises, no track record yet." },
+  ];
+  // The partners' plan for the company (flavor; every plan is equally good)
+  const PLANS = ["Buy up smaller rivals and merge them in", "Cut waste and fix the books", "Open in new cities",
+                 "Bring in a new CEO", "Sell off the weak divisions", "Modernize everything and raise prices"];
+  // Made-up fund names, built from the game's generic surname list
+  const fundName = () => pick([
+    () => `${pick(NAME_PARTS.surname)} & ${pick(NAME_PARTS.surname)} Capital`,
+    () => `${pick(NAME_PARTS.surname)} Equity Group`,
+    () => `${pick(NAME_PARTS.surname)} Partners`,
+  ])();
+
+  // ---------- Helpers ----------
+  const me = () => inv("partnerships");
+  const num = (v, d = 0) => (Number.isFinite(v) ? v : d);
+  const rand = (a, b) => a + Math.random() * (b - a);
+  function weighted(weights) {
+    let roll = Math.random() * weights.reduce((a, w) => a + w, 0);
+    for (let i = 0; i < weights.length; i++) { roll -= weights[i]; if (roll < 0) return i; }
+    return weights.length - 1;
+  }
+
+  // A new deal: a big company from tier 3 up (or your top tier, if higher),
+  // sized to your income.
+  function makeOffer() {
+    const top = tierUnlocked();
+    const kinds = INDUSTRIES.filter(i => i.tier >= 3 && i.tier <= Math.max(3, top));
+    const ind = pick(kinds);
+    const share = roundNice(Math.max(TIERS[top].unlock * PE.shareFloor, 1000, baseIncome() * PE.shareSeconds * rand(0.8, 1.2)));
+    // The whole company is worth many times a single business of its kind
+    const worth = ind.cost * rand(30, 80);
+    return {
+      key: Math.random().toString(36).slice(2, 9),
+      company: makeName(ind), ind: ind.id, fund: fundName(), fq: weighted(FUNDS.map(f => f.weight)),
+      plan: Math.floor(Math.random() * PLANS.length), share,
+      pct: Math.max(0.1, Math.round(share / worth * 1000) / 10),     // your % of the company (flavor)
+      madeAt: Date.now(),
+    };
+  }
+  // Roll how a deal turns out, from its fund type
+  function rollMult(fq) {
+    const f = FUNDS[fq];
+    return Math.random() < f.bad ? PE.badMult : Math.round(rand(f.lo, f.hi) * 100) / 100;
+  }
+  // What your share is "marked at" partway through: it drifts from what
+  // you put in toward the final result, with a small wobble, the way a
+  // fund's quarterly reports do. (So a deal going bad shows up as a slide.)
+  function markValue(d, now = Date.now()) {
+    const t = Math.min(1, Math.max(0, (now - d.startAt) / (d.endsAt - d.startAt)));
+    const ease = t * t * (3 - 2 * t);                                   // slow start, slow finish
+    const wobble = 1 + 0.04 * Math.sin(now / 9000 + d.startAt % 97) * (1 - t);
+    return d.invested * (1 + (d.mult - 1) * ease) * wobble;
+  }
+
+  // ---------- The one decision: join or pass ----------
+  function join() {
+    const s = me(), o = s.offer;
+    if (!o) return false;
+    if (s.deal) { toast("You're already in a deal. Wait for it to sell."); return false; }
+    if (o.share > state.cash) { toast("Not enough cash for your share"); return false; }
+    state.cash -= o.share;
+    const now = Date.now();
+    s.deal = Object.assign({}, o, { invested: o.share, mult: rollMult(o.fq), startAt: now,
+                                    endsAt: now + rand(PE.holdMin, PE.holdMax) * 1000, addOn: false });
+    s.offer = null;
+    s.record.joined++;
+    toast(`You're a partner in ${o.company}. The fund plans to sell it in about ${Math.round((PE.holdMin + PE.holdMax) / 120)} minutes.`);
+    dirty = true; render(true);
+    return true;
+  }
+  function pass() {
+    const s = me();
+    if (!s.offer) return false;
+    s.offer = null;
+    s.nextOfferAt = Date.now() + PE.nextOffer * 1000;
+    dirty = true; render(true);
+    return true;
+  }
+
+  // ---------- The exit ----------
+  const news = [];             // exit pop-ups waiting for the screen to be free (not saved: the money is already paid)
+  function exitDeal(force) {
+    const s = me(), d = s.deal;
+    if (!d) return null;
+    if (force !== undefined) d.mult = force;           // tests only
+    const pay = d.invested * d.mult;
+    addProceeds(pay, d.invested);
+    s.deal = null;
+    s.nextOfferAt = Date.now() + PE.nextOffer * 1000;
+    s.record.exits++;
+    s.record.profit += pay - d.invested;
+    s.record.best = Math.max(s.record.best, d.mult);
+    s.last = { company: d.company, invested: d.invested, mult: d.mult };
+    const good = d.mult >= 1;
+    news.push({ title: good ? "Deal closed!" : "Deal went badly",
+      text: good ? `The partners sold ${d.company} to a bigger company. Your ${money(d.invested)} share came back as ${money(pay)} (${d.mult}x).`
+                 : `${d.company} struggled and was sold off cheap. You got back ${money(pay)} of your ${money(d.invested)}. That's the risk of a buyout.`,
+      amount: (good ? "+" : "") + money(pay) });
+    dirty = true;
+    return { mult: d.mult, pay };
+  }
+
+  // ---------- Event: a capital call ----------
+  // The partners want more money to buy a rival. Putting it in makes the
+  // whole deal a bit better; saying no is always safe.
+  function capitalCallEvent() {
+    const d = me().deal, now = Date.now();
+    if (!d || d.addOn || now > d.startAt + (d.endsAt - d.startAt) * 0.7) return [];
+    return [() => {
+      const extra = roundNice(d.invested * PE.addOnShare);
+      return { title: "Capital call", text: `The ${d.fund} partners found a rival to buy and fold into ${d.company}. ` +
+          `They're asking every partner for 25% more. Put in ${money(extra)}?`,
+        options: [
+          { label: `Put in ${money(extra)}`, yes: true, act: () => {
+              const cur = me().deal;
+              if (cur !== d) { toast("That deal already closed"); return; }
+              if (d.addOn) return;                     // already answered (stops a double press paying twice)
+              if (state.cash < extra) { toast("Not enough cash: you sat this one out"); return; }
+              state.cash -= extra;
+              d.invested += extra; d.addOn = true; d.mult = Math.round((d.mult + PE.addOnBoost) * 100) / 100;
+              toast(`You put in ${money(extra)}. ${d.company} just got bigger.`); } },
+          { label: "Sit it out", act: () => { if (me().deal === d) d.addOn = true; } },
+        ] };
+    }];
+  }
+
+  // ---------- Drawing the card ----------
+  let drawnKey = "", drawnCard = null;
+  function structure() {
+    const s = me(), o = s.offer, d = s.deal;
+    let html = `<h2 class="cond">Partnerships and private equity</h2>
+      <p class="note">Go in with a buyout fund and other partners on a big company. Your money is locked up while they grow it, then you share in the sale.</p>`;
+    if (d) {
+      const f = FUNDS[d.fq];
+      html += `<div class="biz" id="pe-deal">${logoHtml(d.company, IND[d.ind].sector)}
+          <div><h3 class="cond">${esc(d.company)}</h3><div class="sub">${esc(IND[d.ind].name)} · with ${esc(d.fund)} · you own ${d.pct}%</div></div>
+          <div class="chips"><span class="chip ${f.tone}">${f.name}</span><span class="chip">Plan: ${esc(PLANS[d.plan])}</span>${d.addOn && d.invested > d.share ? `<span class="chip good">Bought a rival</span>` : ""}</div>
+          <div class="line" id="pe-mark"></div></div>`;
+    } else if (o) {
+      const f = FUNDS[o.fq];
+      html += `<div class="biz" id="pe-offer">${logoHtml(o.company, IND[o.ind].sector)}
+          <div><h3 class="cond">${esc(o.company)}</h3><div class="sub">${esc(IND[o.ind].name)} · led by ${esc(o.fund)}</div></div>
+          <button class="buy" id="pe-join"><span class="pr">${money(o.share)}</span><small>join for ${o.pct}%</small></button>
+          <div class="chips"><span class="chip ${f.tone}">${f.name}: ${esc(f.says)}</span></div>
+          <div class="line">Plan: ${esc(PLANS[o.plan])} · sells in about ${Math.round((PE.holdMin + PE.holdMax) / 120)} min</div>
+          <div class="acts"><button class="smallbtn" id="pe-pass">Pass</button></div></div>`;
+    } else html += `<p class="note" id="pe-wait"></p>`;
+    if (s.last) html += `<p class="note">Last deal: ${esc(s.last.company)} <strong style="color:var(${s.last.mult >= 1 ? "--money" : "--loss"})">${s.last.mult}x</strong> on ${money(s.last.invested)}</p>`;
+    return html;
+  }
+  function drawCard(card, full) {
+    if (full) {
+      const html = structure();
+      // Also redraw when the host hands us a brand-new, empty card (it
+      // rebuilds every card when another investment unlocks).
+      if (html !== drawnKey || card !== drawnCard) {
+        drawnKey = html; drawnCard = card;
+        const focusId = document.activeElement?.id;
+        card.innerHTML = html;
+        card.querySelector("#pe-join")?.addEventListener("click", join);
+        card.querySelector("#pe-pass")?.addEventListener("click", pass);
+        if (focusId && card.querySelector("#" + focusId)) $(focusId).focus();
+      }
+    }
+    const s = me(), now = Date.now();
+    const btn = card.querySelector("#pe-join");
+    if (btn && s.offer) {
+      const can = s.offer.share <= state.cash;
+      btn.setAttribute("aria-disabled", String(!can));
+      card.querySelector("#pe-offer").classList.toggle("affordable", can);
+    }
+    const mark = card.querySelector("#pe-mark");
+    if (mark && s.deal) {
+      const v = markValue(s.deal, now), left = s.deal.endsAt - now;
+      mark.textContent = `Your ${money(s.deal.invested)} is worth about ${money(v)} (${(v / s.deal.invested).toFixed(2)}x) · ` +
+        (left > 0 ? `sale in ${duration(left + 999)}` : "closing the sale...");
+    }
+    const wait = card.querySelector("#pe-wait");
+    if (wait) wait.textContent = `The next deal comes your way in ${duration(Math.max(0, s.nextOfferAt - now) + 999)}.`;
+  }
+
+  // ---------- Register ----------
+  const fresh = () => ({ offer: null, nextOfferAt: 0, deal: null, last: null, record: { joined: 0, exits: 0, best: 0, profit: 0 } });
+  // Clean one saved offer or deal (null if it's broken)
+  function cleanOffer(o) {
+    if (!o || typeof o !== "object" || !IND[o.ind] || !Number.isFinite(o.share) || o.share <= 0) return null;
+    return { key: String(o.key || "o"), company: String(o.company || IND[o.ind].name), ind: o.ind, fund: String(o.fund || "The fund"),
+      fq: FUNDS[o.fq] ? o.fq : 1, plan: PLANS[o.plan] ? o.plan : 0, share: o.share, pct: Math.max(0.1, num(o.pct, 1)),
+      madeAt: num(o.madeAt, Date.now()) };
+  }
+  registerInvestment({
+    id: "partnerships", name: "Partnerships and private equity", order: 80, unlockTier: 3,
+    fresh,
+    validate(saved) {
+      const out = fresh();
+      out.offer = cleanOffer(saved.offer);
+      out.nextOfferAt = Math.max(0, num(saved.nextOfferAt));
+      const d = cleanOffer(saved.deal);
+      if (d && Number.isFinite(saved.deal.mult) && Number.isFinite(saved.deal.startAt) && Number.isFinite(saved.deal.endsAt)) {
+        out.deal = Object.assign(d, { invested: Math.max(d.share, num(saved.deal.invested, d.share)),
+          mult: Math.min(5, Math.max(0, saved.deal.mult)), startAt: saved.deal.startAt,
+          endsAt: Math.max(saved.deal.startAt + 1000, saved.deal.endsAt), addOn: !!saved.deal.addOn });
+      }
+      if (saved.last && Number.isFinite(saved.last.mult)) out.last = { company: String(saved.last.company || ""), invested: num(saved.last.invested), mult: saved.last.mult };
+      for (const k in out.record) out.record[k] = num(saved.record?.[k]);
+      return out;
+    },
+    tick(now) {
+      if (!investUnlocked(this)) return;
+      const s = me();
+      if (news.length && !modalOpen()) { const n = news.shift(); showModal(n.title, n.text, n.amount); }   // shown a tick later (see startups.js)
+      if (s.deal && now >= s.deal.endsAt) exitDeal();
+      if (s.offer && now - s.offer.madeAt > PE.staleAfter * 1000) { s.offer = null; s.nextOfferAt = now; }
+      if (!s.deal && !s.offer && now >= s.nextOfferAt) { s.offer = makeOffer(); dirty = true; }
+    },
+    render: drawCard,
+    events: capitalCallEvent,
+    stats() {
+      const r = me().record;
+      if (!r.joined) return [];
+      return [["Buyout deals joined", r.joined], ["Deals sold", r.exits + (r.exits ? ` (best ${r.best}x)` : "")], ["Profit from deals", money(r.profit)]];
+    },
+    test: { PE, FUNDS, makeOffer, rollMult, markValue, join, pass, exitDeal, capitalCallEvent, news },
+  });
+})();
 
 /* =====================================================================
    INVESTMENT: REAL ESTATE  (not built yet)
@@ -2374,26 +2871,337 @@ function updateInvest(full) {
    Keep everything for this investment in this file. Its tests go in
    tests/invest_real_estate.py and run on the built index.html.
    ===================================================================== */
-
 /* =====================================================================
-   INVESTMENT: ANGEL AND STARTUP STAKES  (not built yet)
-   Planned: Fund a made-up startup pitch. Most fail and a rare one pays 50x or more.
-   Due diligence first improves your odds.
+   INVESTMENT: ANGEL AND STARTUP STAKES
+   Being an "angel investor": you write a check to a tiny made-up startup
+   for a small slice of the company, then wait to see what happens.
 
-   To build it, replace this comment's "not built yet" and call
-   registerInvestment() (see 20-invest.js for every hook), for example:
+   How it plays (one card, one decision):
+     - One founder pitch is on the card at a time: a made-up company, a
+       one-line idea, how much they want and for what share.
+     - Decide: FUND IT or PASS. Before deciding you can pay for DUE
+       DILIGENCE (a small share of the check), which tells you how good
+       the startup really is.
+     - Funded startups sit in your portfolio (up to SU.slots at once).
+       After SU.waitMin..waitMax real minutes the result comes in.
 
-     registerInvestment({
-       id: "startups", name: "Angel and startup stakes", order: 50, unlockTier: 2,
-       fresh: () => ({ }),
-       validate: saved => ({ }),
-       earn(seconds) { return 0; },
-       render(card, full) { },
-     });
+   The real-world lesson built into the numbers:
+     - MOST STARTUPS FAIL. Even the good ones fail about half the time.
+     - Returns come from rare big wins: about 1 in 230 blind checks (and
+       about 1 in 50 standouts) becomes a "unicorn" paying 50x to 100x.
+     - Funding blind is barely better than breaking even. Doing your
+       homework and only funding the solid ones is what makes it pay,
+       just like real angel investing.
 
-   Keep everything for this investment in this file. Its tests go in
-   tests/invest_startups.py and run on the built index.html.
+   Every pitch has a hidden GRADE (0 weak, 1 solid, 2 standout). The grade
+   sets the odds of each OUTCOME. Due diligence reveals the grade (as a
+   plain-English finding, not a number).
+
+   Money rules (same as selling a business, see addProceeds in
+   06-fixsell.js): the check leaves your cash when you fund it, and only
+   the PROFIT on a win counts as "earned" (toward tiers, upgrades and
+   Legacy stars). Getting your own money back doesn't count twice.
+
+   Everything lives inside one function so this file's names can't clash
+   with the other investment files (they all share one script).
    ===================================================================== */
+(() => {
+  // ---------- Tuning ----------
+  const SU = {
+    slots: 2,                   // startups you can hold at once (keeps it a choice, not a firehose)
+    checkSeconds: 240,          // a check is about 4 minutes of your steady income...
+    checkFloor: 0.1,            // ...but at least 10% of your current tier's unlock amount
+    ddShare: 0.05,              // due diligence costs 5% of the check
+    nextPitch: 20,              // seconds until the next pitch after you fund or pass
+    staleAfter: 300,            // an untouched pitch is replaced after 5 minutes (so check sizes keep up)
+    waitMin: 12 * 60,           // seconds until a funded startup's result comes in
+    waitMax: 20 * 60,
+    keepResults: 4,             // recent results shown on the card
+  };
+
+  // OUTCOMES: what a startup can turn into. mult = what your check turns into.
+  // The unicorn's mult is a range (50x to 100x), rolled when it happens.
+  const OUTCOMES = [
+    { id: "fail",    mult: 0,   title: "Shut down",      text: n => `${n} ran out of money and shut down.` },
+    { id: "acqui",   mult: 1,   title: "Bought for the team", text: n => `A bigger company hired ${n}'s team and bought the leftovers. You got your money back.` },
+    { id: "acquired",mult: 3,   title: "Acquired!",      text: n => `${n} was bought by a bigger company.` },
+    { id: "bigexit", mult: 10,  title: "Big exit!",      text: n => `${n} took off and sold for a fortune.` },
+    { id: "unicorn", mult: [50, 100], title: "Unicorn!", text: n => `${n} became a household name. Your tiny early check is now worth a mint.` },
+  ];
+  // GRADES: how good a startup really is. weight = how often a pitch has
+  // this grade. odds = chance of each outcome above, in the same order.
+  // Expected return per $1 (worked out by hand, checked by the test):
+  //   weak ~0.18x, solid ~1.25x, standout ~3.1x; blind average ~1.1x;
+  //   funding only solid + standout after due diligence ~1.7x.
+  const GRADES = [
+    { name: "Weak",     weight: 0.40, tone: "bad",  odds: [0.88, 0.09, 0.03, 0,     0],
+      finds: ["No paying customers yet", "The founders are fighting over who owns what", "Burning cash with nothing to show",
+              "It's a copy of three other apps"] },
+    { name: "Solid",    weight: 0.45, tone: "",     odds: [0.622, 0.18, 0.155, 0.04, 0.003],
+      finds: ["Real customers, but money runs out in 9 months", "Growing steadily, nothing flashy", "Good team in a crowded market"] },
+    { name: "Standout", weight: 0.15, tone: "good", odds: [0.50, 0.18, 0.22, 0.08,  0.02],
+      finds: ["Sales are doubling every quarter", "The founders sold their last company", "Customers are begging for it"] },
+  ];
+
+  // Made-up startups. sector picks the logo color (SECTORS in 01-data.js).
+  const IDEAS = [
+    ["Scheduling app for dog groomers", "tech"], ["A robot that folds laundry", "tech"], ["Plant-based beef jerky", "food"],
+    ["Drone delivery for farm parts", "transport"], ["Smart locks for storage units", "property"], ["Payroll app for small restaurants", "finance"],
+    ["Rent-a-tool marketplace", "retail"], ["Solar carports for parking lots", "property"], ["Office coffee by subscription", "food"],
+    ["Sensors that warn of roof leaks", "tech"], ["Marketplace for used restaurant gear", "retail"], ["Oil changes in your office parking lot", "auto"],
+    ["Late-night taco delivery kitchen", "food"], ["Booking app for youth sports leagues", "fun"], ["Same-day courier for pharmacies", "transport"],
+    ["Food truck insurance you buy by text", "finance"], ["Indoor mini golf with arcade games", "fun"], ["Self-serve dog wash stations", "services"],
+    ["Software that routes HVAC crews", "services"], ["EV chargers for apartment buildings", "auto"],
+  ];
+  const NAME_ENDS = [" Labs", " Loop", " Nest", " Works", " Stack", "ly", " Base", " Kit", "ify", " Hub"];
+  // What every founder says before you look closer (shown until due diligence)
+  const HYPE = ["\"This market is huge.\"", "\"Nobody else is doing this.\"", "\"Our users love us.\"",
+                "\"We'll be everywhere in a year.\"", "\"We just need a little runway.\""];
+
+  // ---------- Helpers ----------
+  const me = () => inv("startups");
+  const num = (v, d = 0) => (Number.isFinite(v) ? v : d);
+  const rand = (a, b) => a + Math.random() * (b - a);
+  // Pick an index from a list of weights that add up to about 1
+  function weighted(weights) {
+    let roll = Math.random() * weights.reduce((a, w) => a + w, 0);
+    for (let i = 0; i < weights.length; i++) { roll -= weights[i]; if (roll < 0) return i; }
+    return weights.length - 1;
+  }
+  const ddCostOf = p => Math.max(1, p.check * SU.ddShare);
+
+  // A new founder pitch, sized to how much you earn right now
+  function makePitch() {
+    const [idea, sector] = pick(IDEAS);
+    const floor = TIERS[tierUnlocked()].unlock * SU.checkFloor;
+    const check = roundNice(Math.max(floor, 50, baseIncome() * SU.checkSeconds * rand(0.7, 1.3)));
+    const pct = Math.round(rand(3, 12));                 // share of the company you'd get
+    return {
+      key: Math.random().toString(36).slice(2, 9),
+      name: pick(NAME_PARTS.tech) + pick(NAME_ENDS), idea, sector, check, pct,
+      grade: weighted(GRADES.map(g => g.weight)),       // hidden until due diligence
+      find: 0,                                           // which finding due diligence reports (picked below)
+      hype: pick(HYPE),
+      checked: false,
+      madeAt: Date.now(),
+    };
+  }
+
+  // ---------- The one decision: fund, pass (and the optional homework) ----------
+  function checkPitch() {
+    const s = me(), p = s.pitch;
+    if (!p || p.checked) return false;
+    const cost = ddCostOf(p);
+    if (cost > state.cash) { toast("Not enough cash for due diligence"); return false; }
+    state.cash -= cost;
+    p.checked = true;
+    p.find = Math.floor(Math.random() * GRADES[p.grade].finds.length);
+    s.record.checks++;
+    toast(`Due diligence: ${GRADES[p.grade].finds[p.find].toLowerCase()}.`);
+    dirty = true; render(true);
+    return true;
+  }
+  function fund() {
+    const s = me(), p = s.pitch;
+    if (!p) return false;
+    if (s.stakes.length >= SU.slots) { toast(`You can back ${SU.slots} startups at a time. Wait for a result first.`); return false; }
+    if (p.check > state.cash) { toast("Not enough cash to fund it"); return false; }
+    state.cash -= p.check;
+    s.stakes.push({ key: p.key, name: p.name, idea: p.idea, sector: p.sector, check: p.check, pct: p.pct, grade: p.grade,
+                    checked: p.checked, endsAt: Date.now() + rand(SU.waitMin, SU.waitMax) * 1000 });
+    s.record.funded++;
+    s.pitch = null;
+    s.nextPitchAt = Date.now() + SU.nextPitch * 1000;
+    toast(`You own ${p.pct}% of ${p.name}. Results in about ${Math.round((SU.waitMin + SU.waitMax) / 120)} minutes.`);
+    dirty = true; render(true);
+    return true;
+  }
+  function pass() {
+    const s = me();
+    if (!s.pitch) return false;
+    s.pitch = null;
+    s.nextPitchAt = Date.now() + SU.nextPitch * 1000;
+    dirty = true; render(true);
+    return true;
+  }
+
+  // ---------- Results ----------
+  // Roll a stake's outcome from its grade's odds and pay it out.
+  // `force` (tests only) picks the outcome index instead of rolling.
+  const news = [];                 // big wins waiting to be shown in a pop-up (not saved: the money is already paid)
+  function resolve(stake, force) {
+    const s = me();
+    const o = force ?? weighted(GRADES[stake.grade].odds);
+    const out = OUTCOMES[o];
+    const mult = Array.isArray(out.mult) ? Math.round(rand(out.mult[0], out.mult[1])) : out.mult;
+    const pay = stake.check * mult;
+    if (pay > 0) addProceeds(pay, stake.check);
+    s.stakes = s.stakes.filter(x => x !== stake);
+    s.record.profit += pay - stake.check;
+    if (mult >= 3) { s.record.exits++; s.record.best = Math.max(s.record.best, mult); }
+    s.results.unshift({ name: stake.name, check: stake.check, mult, o });
+    s.results.length = Math.min(s.results.length, SU.keepResults);
+    // Losses and money-back are quiet toasts; real wins get a pop-up.
+    if (mult >= 3) news.push({ title: out.title, text: `${out.text(stake.name)} Your ${money(stake.check)} check paid ${mult}x.`, amount: "+" + money(pay) });
+    else toast(`${out.text(stake.name)}${mult === 0 ? ` Your ${money(stake.check)} is gone.` : ""}`);
+    dirty = true;
+    return { o, mult, pay };
+  }
+
+  // A rival investor offers to buy one of your stakes early (a
+  // "secondary sale"): take a sure profit now, or hold for the real result.
+  // Only promising startups attract offers, so an offer is a hint, not proof.
+  function secondaryEvent() {
+    const now = Date.now();
+    const ok = me().stakes.filter(x => x.grade > 0 && now < x.endsAt);
+    if (!ok.length) return [];
+    return [() => {
+      const st = pick(ok);
+      const offer = roundNice(st.check * rand(1.6, 3));
+      return { title: "Someone wants your stake", text: `A bigger fund wants to buy your ${st.pct}% of ${st.name} for ${money(offer)} now. You put in ${money(st.check)}. Sell, or hold out for the real result?`,
+        options: [
+          { label: `Sell for ${money(offer)}`, yes: true, act: () => {
+              const s = me();
+              if (!s.stakes.includes(st)) { toast(`${st.name}'s result already came in`); return; }   // it finished while the offer was up
+              s.stakes = s.stakes.filter(x => x !== st);
+              addProceeds(offer, st.check);
+              s.record.profit += offer - st.check;
+              s.record.sold++;
+              s.results.unshift({ name: st.name, check: st.check, mult: Math.round(offer / st.check * 10) / 10, o: -1 });
+              s.results.length = Math.min(s.results.length, SU.keepResults);
+              toast(`Sold your stake in ${st.name}`);
+            } },
+          { label: "Hold", act: () => {} },
+        ] };
+    }];
+  }
+
+  // ---------- Drawing the card ----------
+  // The card is rebuilt only when what's on it changes (a new pitch, a
+  // result...). Numbers that tick (countdowns, can-I-afford-it) are
+  // updated in place every frame, so a button never vanishes under your
+  // finger and controller focus stays put.
+  let drawnKey = "", drawnCard = null;
+  function structure() {
+    const s = me(), p = s.pitch;
+    let html = `<h2 class="cond">Startup stakes</h2>
+      <p class="note">Back a founder with a check for a slice of their company. Most startups fail; a rare one pays 50x or more. Due diligence shows you which ones are worth it.</p>`;
+    if (p) {
+      const g = GRADES[p.grade];
+      const finding = p.checked ? `<span class="chip ${g.tone}">${esc(g.name)}: ${esc(g.finds[p.find])}</span>`
+                                : `<span class="chip">Founder says ${esc(p.hype)}</span>`;
+      html += `<div class="biz" id="su-pitch">${logoHtml(p.name, p.sector)}
+          <div><h3 class="cond">${esc(p.name)}</h3><div class="sub">${esc(p.idea)} · ${SECTORS[p.sector].name}</div></div>
+          <button class="buy" id="su-fund"><span class="pr">${money(p.check)}</span><small>fund it for ${p.pct}%</small></button>
+          <div class="chips">${finding}</div>
+          <div class="line">Values the company at ${money(p.check / p.pct * 100)}</div>
+          <div class="acts">${p.checked ? "" : `<button class="smallbtn" id="su-dd">Due diligence · ${money(ddCostOf(p))}</button>`}
+            <button class="smallbtn" id="su-pass">Pass</button></div></div>`;
+    } else html += `<p class="note" id="su-wait"></p>`;
+    if (s.stakes.length) {
+      html += `<h3 class="cond" style="margin:4px 0 0">Your startups (${s.stakes.length} of ${SU.slots})</h3>`;
+      for (const st of s.stakes) {
+        html += `<div class="biz">${logoHtml(st.name, st.sector)}
+            <div><h3 class="cond">${esc(st.name)}</h3><div class="sub">${esc(st.idea)} · ${st.pct}% for ${money(st.check)}</div></div>
+            <div class="line" data-ends="${st.endsAt}"></div></div>`;
+      }
+    }
+    if (s.results.length) {
+      html += `<p class="note">Recent results: ` + s.results.map(r =>
+        `${esc(r.name)} <strong style="color:var(${r.mult >= 1 ? "--money" : "--loss"})">${r.o === -1 ? "sold at " : ""}${r.mult}x</strong>`).join(" · ") + `</p>`;
+    }
+    return html;
+  }
+  function drawCard(card, full) {
+    if (full) {
+      const html = structure();
+      // Also redraw when the host hands us a brand-new, empty card (it
+      // rebuilds every card when another investment unlocks).
+      if (html !== drawnKey || card !== drawnCard) {
+        drawnKey = html; drawnCard = card;
+        const focusId = document.activeElement?.id;
+        card.innerHTML = html;
+        card.querySelector("#su-fund")?.addEventListener("click", fund);
+        card.querySelector("#su-dd")?.addEventListener("click", checkPitch);
+        card.querySelector("#su-pass")?.addEventListener("click", pass);
+        if (focusId && card.querySelector("#" + focusId)) $(focusId).focus();
+      }
+    }
+    // live bits
+    const s = me(), p = s.pitch, now = Date.now();
+    const fundBtn = card.querySelector("#su-fund");
+    if (fundBtn && p) {
+      const can = p.check <= state.cash && s.stakes.length < SU.slots;
+      fundBtn.setAttribute("aria-disabled", String(!can));
+      card.querySelector("#su-pitch").classList.toggle("affordable", can);
+      fundBtn.querySelector("small").textContent = s.stakes.length >= SU.slots ? "portfolio full" : `fund it for ${p.pct}%`;
+    }
+    const dd = card.querySelector("#su-dd");
+    if (dd && p) dd.setAttribute("aria-disabled", String(ddCostOf(p) > state.cash));
+    const wait = card.querySelector("#su-wait");
+    if (wait) wait.textContent = `Next founder pitch in ${duration(Math.max(0, s.nextPitchAt - now) + 999)}.`;
+    for (const el of card.querySelectorAll("[data-ends]")) {
+      const left = Number(el.dataset.ends) - now;
+      el.textContent = left > 0 ? `Results in ${duration(left + 999)}` : "Results are in...";
+    }
+  }
+
+  // ---------- Register ----------
+  const fresh = () => ({ pitch: null, nextPitchAt: 0, stakes: [], results: [],
+                         record: { funded: 0, checks: 0, exits: 0, sold: 0, best: 0, profit: 0 } });
+  registerInvestment({
+    id: "startups", name: "Startup stakes", order: 50, unlockTier: 2,
+    fresh,
+    // Never trust a save: rebuild every field from known-good pieces.
+    validate(saved) {
+      const out = fresh();
+      const okGrade = g => Number.isInteger(g) && g >= 0 && g < GRADES.length;
+      const okPitch = p => p && typeof p === "object" && Number.isFinite(p.check) && p.check > 0 && okGrade(p.grade) && SECTORS[p.sector];
+      if (okPitch(saved.pitch)) {
+        const p = saved.pitch;
+        out.pitch = { key: String(p.key || "p"), name: String(p.name || "Startup"), idea: String(p.idea || ""), sector: p.sector,
+          check: p.check, pct: Math.min(50, Math.max(1, num(p.pct, 5))), grade: p.grade,
+          find: Math.min(GRADES[p.grade].finds.length - 1, Math.max(0, num(p.find) | 0)), hype: String(p.hype || HYPE[0]),
+          checked: !!p.checked, madeAt: num(p.madeAt, Date.now()) };
+      }
+      out.nextPitchAt = Math.max(0, num(saved.nextPitchAt));
+      if (Array.isArray(saved.stakes)) out.stakes = saved.stakes.filter(okPitch).slice(0, SU.slots).map(st => ({
+        key: String(st.key || "s"), name: String(st.name || "Startup"), idea: String(st.idea || ""), sector: st.sector,
+        check: st.check, pct: Math.min(50, Math.max(1, num(st.pct, 5))), grade: st.grade, checked: !!st.checked,
+        endsAt: num(st.endsAt, Date.now()) }));
+      if (Array.isArray(saved.results)) out.results = saved.results.filter(r => r && Number.isFinite(r.mult)).slice(0, SU.keepResults)
+        .map(r => ({ name: String(r.name || "Startup"), check: num(r.check), mult: r.mult, o: num(r.o) | 0 }));
+      for (const k in out.record) out.record[k] = num(saved.record?.[k]);
+      return out;
+    },
+    // No steady income: money only moves on fund / result. Results that
+    // came due while you were away are paid out by tick() below.
+    tick(now) {
+      if (!investUnlocked(this)) return;
+      const s = me();
+      // Show a big win from an earlier tick once no other pop-up is up
+      // (so it isn't hidden behind "While you were out", which opens right
+      // after the first tick on load).
+      if (news.length && !modalOpen()) { const n = news.shift(); showModal(n.title, n.text, n.amount); }
+      for (const st of [...s.stakes]) if (now >= st.endsAt) resolve(st);
+      // A pitch left alone too long goes stale (another founder calls), so
+      // check sizes keep up with your income.
+      if (s.pitch && !s.pitch.checked && now - s.pitch.madeAt > SU.staleAfter * 1000) { s.pitch = null; s.nextPitchAt = now; }
+      if (!s.pitch && now >= s.nextPitchAt) { s.pitch = makePitch(); dirty = true; }
+    },
+    render: drawCard,
+    events: secondaryEvent,
+    stats() {
+      const r = me().record;
+      if (!r.funded) return [];
+      return [["Startups funded", r.funded], ["Startup exits (3x or more)", r.exits + (r.best ? ` (best ${r.best}x)` : "")],
+              ["Profit from startups", money(r.profit)]];
+    },
+    // Handles for tests/invest_startups.py
+    test: { SU, GRADES, OUTCOMES, makePitch, checkPitch, fund, pass, resolve, news,
+            odds: g => GRADES[g].odds, outcomeMults: () => OUTCOMES.map(o => o.mult) },
+  });
+})();
 
 /* =====================================================================
    INVESTMENT: STOCK MARKET  (not built yet)
