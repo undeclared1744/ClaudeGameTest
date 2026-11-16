@@ -130,6 +130,29 @@ textarea { width: 100%; min-height: 80px; font: 13px var(--mono); border-radius:
 .modal { background: var(--paper); border-radius: 14px; padding: 20px; max-width: 440px; width: 100%; display: grid; gap: 12px; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
 .modal h2 { margin: 0; font-size: 34px; line-height: 1; }
 .modal .amount { font: 600 36px var(--mono); color: var(--money); }
+/* the business sheet and its mini games */
+.biz .acts { grid-column: 2; display: flex; gap: 6px; flex-wrap: wrap; }
+.biz .acts .smallbtn { padding: 4px 10px; font-size: 14px; }
+.sheet { max-width: 560px; max-height: calc(100vh - 32px); overflow-y: auto; }
+.sheet h3 { margin: 4px 0 0; font-size: 20px; }
+.sheet .sub { color: var(--muted); font-size: 14px; margin: 0; }
+.sheet p { margin: 0; }
+.sheet .up { color: var(--money); } .sheet .down { color: var(--loss); }
+.sheet .muted { color: var(--muted); }
+#sheetBody { display: grid; gap: 10px; }
+.probs { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.probs li { display: grid; gap: 6px; justify-items: start; }
+.gopts { display: grid; gap: 8px; }
+.gopts .smallbtn { text-align: left; padding: 10px 12px; }
+.review { margin: 0; padding: 12px 14px; background: #fff; border-left: 6px solid var(--loss); border-radius: 8px; font-size: 17px; }
+.ledger-lines { display: grid; gap: 6px; }
+.line-btn { display: flex; justify-content: space-between; gap: 12px; font-family: var(--mono); }
+.cand { display: grid; gap: 2px; }
+.cand span { font: 13px var(--mono); }
+.gauge { position: relative; height: 34px; background: var(--rule); border-radius: 8px; overflow: hidden; }
+.gauge .zone { position: absolute; top: 0; bottom: 0; background: #7cc79a; }
+.gauge .needle { position: absolute; top: 0; bottom: 0; width: 4px; margin-left: -2px; background: var(--ink); }
+.gstat { font: 14px var(--mono); }
 .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--night); color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 15px; z-index: 11; opacity: 0; transition: opacity .25s; pointer-events: none; max-width: 90vw; text-align: center; }
 .toast.on { opacity: 1; }
 
@@ -257,6 +280,13 @@ textarea { width: 100%; min-height: 80px; font: 13px var(--mono); border-radius:
     <p id="modalText"></p>
     <div class="amount" id="modalAmount"></div>
     <button class="bigbtn go cond" id="modalOk">Back to work</button>
+  </div>
+</div>
+<div class="modal-back" id="sheetBack">
+  <div class="modal sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+    <h2 class="cond" id="sheetTitle"></h2>
+    <div id="sheetBody"></div>
+    <button class="bigbtn cond" id="sheetClose">Close</button>
   </div>
 </div>
 <div class="toast" id="toast"></div>
@@ -402,11 +432,57 @@ const QUIRKS = [
   { name: "Below-market lease",       inc: 1.2,  price: 1.0,  weight: 2, tone: "good" },
   { name: "Went viral last month",    inc: 1.4,  price: 1.35, weight: 1, tone: "good" },
   { name: "Family-run for 40 years",  inc: 1.1,  price: 1.1,  weight: 2, tone: "good" },
-  { name: "Bad online reviews",       inc: 0.8,  price: 0.75, weight: 2, tone: "bad"  },
-  { name: "Needs new equipment",      inc: 0.75, price: 0.6,  weight: 2, tone: "bad"  },
-  { name: "Messy books",              inc: 0.9,  price: 0.95, weight: 2, tone: "bad"  },
+  // fix: these bad quirks can be fixed once you own the business (see PROBLEMS)
+  { name: "Bad online reviews",       inc: 0.8,  price: 0.75, weight: 2, tone: "bad", fix: "reviews"   },
+  { name: "Needs new equipment",      inc: 0.75, price: 0.6,  weight: 2, tone: "bad", fix: "equipment" },
+  { name: "Messy books",              inc: 0.9,  price: 0.95, weight: 2, tone: "bad", fix: "books"     },
+  // Never on a listing (weight 0): what a fixed bad quirk turns into.
+  // Slightly better than "Nothing special": customers noticed the change.
+  { name: "Turned around",            inc: 1.05, price: 1.0,  weight: 0, tone: "good" },
 ];
+const TURNED_AROUND = QUIRKS.length - 1;
 const QUIRK_WEIGHT = QUIRKS.reduce((a, q) => a + q.weight, 0);
+
+// ---------------------------------------------------------------------
+// PROBLEMS: what can be wrong with a business, and how you fix it.
+// This is the "buy it cheap, fix it up, sell it on" side of the game,
+// the way real small-business buyers make money:
+//   - Some problems are out in the open (a listing's bad quirk, or a
+//     rough location). They make the business cheaper to buy.
+//   - Some are HIDDEN: the seller doesn't mention them. You only find
+//     out after you buy, unless you pay for due diligence first.
+// Fixing a problem means passing a quick mini game (game: which one),
+// then paying for the work and waiting for it to finish (bigger
+// businesses take longer). A fixed business earns more, and buyers pay
+// more for it, so you can sell it on at a profit.
+//   penalty: income multiplier while a HIDDEN problem is there (open
+//            problems are already counted in the quirk / location numbers)
+//   costMult: share of the business's base price the fix costs
+//   timeMult: how long the work takes, times FIX_SECONDS for its tier
+// ---------------------------------------------------------------------
+const PROBLEMS = {
+  reviews:   { name: "Bad online reviews",  fixLabel: "Answer the reviews",    game: "reviews", costMult: 0.08, timeMult: 1 },
+  equipment: { name: "Needs new equipment", fixLabel: "Repair the machines",   game: "machine", costMult: 0.08, timeMult: 1 },
+  books:     { name: "Messy books",         fixLabel: "Clean up the books",    game: "books",   costMult: 0.08, timeMult: 1 },
+  rough:     { name: "Rough area",          fixLabel: "Renovate the storefront", game: null,    costMult: 0.25, timeMult: 2 },
+  // hidden ones
+  staff:     { name: "Staff keep quitting", fixLabel: "Hire a good manager",   game: "hire",    costMult: 0.08, timeMult: 1, hidden: true, penalty: 0.8 },
+  taxes:     { name: "Behind on taxes",     fixLabel: "Sort out the taxes",    game: "books",   costMult: 0.08, timeMult: 1, hidden: true, penalty: 0.85 },
+  roof:      { name: "Leaky roof",          fixLabel: "Patch the roof",        game: "machine", costMult: 0.08, timeMult: 1, hidden: true, penalty: 0.85 },
+};
+const HIDDEN_PROBLEMS = Object.keys(PROBLEMS).filter(id => PROBLEMS[id].hidden);
+const HIDDEN_CHANCE = 0.25;         // share of listings hiding a problem
+const DD_COST = 0.03;               // due diligence costs this share of the asking price
+// Seconds the repair work takes after you pass the mini game, by tier.
+const FIX_SECONDS = [10, 30, 90, 240, 600, 1200];
+const FIX_RETRY = 20;               // seconds to wait after failing a mini game
+// Selling: see saleValue(). SALE_MULT takes off the buyer's haggling and
+// the broker's fee, so a plain business sells for 80% of its asking price
+// and you only profit by fixing things or by buying at a real bargain. Finding a buyer takes SELL_SECONDS for its tier, so you can't buy
+// a bargain and dump it the same second.
+const SALE_MULT = 0.8;
+const SELL_SECONDS = [20, 60, 180, 480, 1200, 2400];
+
 
 // Prices: every level you own in an industry (a new business counts as one
 // level) makes the next one in that industry UNIT_GROWTH times pricier.
@@ -507,7 +583,7 @@ function freshState(keepLegacy = 0, keepEarnedAll = 0, keepStats = {}) {
     jobStep: 0, gig: 0,         // progress on the current hustle job
     nextEventAt: now + 60e3,    // first event comes after a minute
     boomUntil: 0,               // "hot economy" event: everything pays more until then
-    stats: Object.assign({ taps: 0, jobs: 0, bought: 0, events: 0, retires: 0, startedAt: now }, keepStats),
+    stats: Object.assign({ taps: 0, jobs: 0, bought: 0, events: 0, retires: 0, checks: 0, fixes: 0, sold: 0, flipProfit: 0, startedAt: now }, keepStats),
     buyMode: "1",
     savedAt: now,
     lastTick: now,
@@ -556,7 +632,7 @@ function levelMult(level) {
 // One business's income per second, without temporary effects (viral, inspection, boom)
 function bizIncome(b) {
   const ind = IND[b.ind];
-  return ind.income * b.incMult * levelMult(b.level) * sectorMult(ind.sector) * globalMult();
+  return ind.income * b.incMult * hiddenMult(b) * levelMult(b.level) * sectorMult(ind.sector) * globalMult();
 }
 // Total steady income per second (no temporary effects)
 function baseIncome() {
@@ -595,10 +671,13 @@ function unitsOf(indId) {
 function listingPrice(l) {
   return IND[l.ind].cost * Math.pow(UNIT_GROWTH, unitsOf(l.ind)) * l.priceMult * priceMult();
 }
-// Income per second a listing would earn at level 1 if you bought it now
+// Income per second a listing would earn at level 1 if you bought it now.
+// A hidden problem only counts once due diligence has found it: until
+// then you don't know about it, and neither does this number.
+const knownHiddenMult = l => (l.checked ? hiddenMult(l) : 1);
 function listingIncome(l) {
   const ind = IND[l.ind];
-  return ind.income * l.incMult * sectorMult(ind.sector) * globalMult();
+  return ind.income * l.incMult * knownHiddenMult(l) * sectorMult(ind.sector) * globalMult();
 }
 // Cost to expand business b by `count` levels. Each level is UNIT_GROWTH
 // times the one before, so the total is a geometric series:
@@ -617,7 +696,7 @@ function maxExpand(b) {
 const expandCount = b => state.buyMode === "max" ? Math.max(1, maxExpand(b)) : Number(state.buyMode);
 
 // How good a deal a listing is: income per dollar compared with a plain one
-function dealScore(l) { return l.incMult / l.priceMult; }
+function dealScore(l) { return l.incMult * knownHiddenMult(l) / l.priceMult; }
 function dealLabel(l) {
   const s = dealScore(l);
   if (s >= 1.3) return { text: "Steal", tone: "great" };
@@ -675,6 +754,10 @@ function makeListing(tierBias) {
     ind: ind.id, name: makeName(ind), city: pick(NAME_PARTS.city), loc, quirk,
     incMult: LOCATIONS[loc].inc * QUIRKS[quirk].inc,
     priceMult: LOCATIONS[loc].price * QUIRKS[quirk].price * noise,
+    // What the seller isn't telling you (null = nothing). The asking price
+    // doesn't reflect it, so a hidden problem makes it a worse deal than it looks.
+    hidden: Math.random() < HIDDEN_CHANCE ? pick(HIDDEN_PROBLEMS) : null,
+    checked: false,                                // due diligence done?
   };
 }
 // Fill the board: half from your top tier, half from any unlocked tier,
@@ -727,11 +810,17 @@ function buyListing(i) {
   state.biz.push({
     id: state.nextBizId++, ind: l.ind, name: l.name, city: l.city, loc: l.loc, quirk: l.quirk,
     incMult: l.incMult, level: 1, paid: price, viralUntil: 0, inspectUntil: 0,
+    hidden: l.hidden || null,      // you find out about a hidden problem the day you take over
+    fixing: null,                  // { p: problem id, until } while repair work is under way
+    selling: null,                 // { until } while it's on the market
+    fixRetryAt: 0,                 // after a failed mini game, when you can try again
   });
   state.stats.bought++;
   state.deals[i] = makeListing(i < Math.ceil(state.deals.length / 2) ? "top" : "any");   // a new listing takes its place
   dealsKey = "";
-  toast(`You bought ${l.name}`);
+  if (l.hidden && !l.checked) showModal("Surprise!", `You took over ${l.name} and found out the seller left something out: ${PROBLEMS[l.hidden].name.toLowerCase()}. ` +
+    "It earns less until you fix it (Empire tab, Manage). Next time, due diligence would have caught it.", "");
+  else toast(`You bought ${l.name}`);
   dirty = true;
   render(true);
   return true;
@@ -793,7 +882,10 @@ function makeEvent() {
       return { title: "Buyout offer", text: `A buyer wants ${b.name} and offers ${money(offer)} cash. It earns ${money(bizIncome(b))}/sec for you now.`,
         options: [
           { label: `Sell for ${money(offer)}`, yes: true, act: () => {
-              state.biz = state.biz.filter(x => x !== b); addCash(offer);
+              // You might have sold it yourself while this offer was up
+              if (!state.biz.includes(b)) { toast("You don't own it any more"); return; }
+              if (sheetBizId === b.id) closeSheet();
+              state.biz = state.biz.filter(x => x !== b); addProceeds(offer, b.paid); state.stats.sold++; state.stats.flipProfit += offer - b.paid;
               showModal("Sold", `${b.name} has a new owner.`, "+" + money(offer)); } },
           { label: "Keep it", act: () => {} },
         ] };
@@ -840,7 +932,7 @@ function makeEvent() {
   return pick(types)();
 }
 function updateEvent(now) {
-  if (!activeEvent && now >= state.nextEventAt && !modalOpen()) {
+  if (!activeEvent && now >= state.nextEventAt && !modalOpen() && !sheetOpen()) {
     activeEvent = makeEvent();
     eventShownAt = now;
     showEvent();
@@ -867,6 +959,7 @@ function closeEvent() {
 function retire() {
   const gain = legacyGain();
   if (gain < 1) return;
+  if (sheetOpen()) closeSheet();
   const stats = Object.assign({}, state.stats, { retires: state.stats.retires + 1 });
   const mode = state.buyMode;
   state = freshState(state.legacy + gain, state.earnedAll, stats);
@@ -876,6 +969,145 @@ function retire() {
   rebuildLists();
   saveNow();
   showModal("Retired!", `You start over with ${state.legacy} Legacy stars. Everything earns ${Math.round(LEGACY_BONUS * 100 * state.legacy)}% more.`, "★ " + state.legacy);
+}
+
+
+/* =====================================================================
+   5b. FIX-UPS, DUE DILIGENCE AND SELLING
+   The real-world loop: check a business out before you buy it, fix
+   what's wrong with it, then sell it for more than you paid.
+   ===================================================================== */
+// Which problems a business (or a listing) has right now, as PROBLEMS ids.
+// `showHidden` = include a hidden problem (owners always know; a listing
+// only shows it after due diligence).
+function problemsOf(b, showHidden = true) {
+  const out = [];
+  const q = QUIRKS[b.quirk];
+  if (q && q.fix) out.push(q.fix);
+  if (b.loc === 0) out.push("rough");
+  if (b.hidden && showHidden) out.push(b.hidden);
+  return out;
+}
+const hiddenMult = b => (b.hidden && PROBLEMS[b.hidden] ? PROBLEMS[b.hidden].penalty : 1);
+
+// What a buyer would pay for business b today (after fees and haggling).
+// Buyers value a business by what it earns compared with a plain one of
+// its kind: the market price of that kind, times how much better or worse
+// this one does (location, quirk, hidden problem), times its size (levels,
+// with the milestone doublings). Your own upgrades, sector bonuses and
+// Legacy stars don't come with the sale, so they don't count.
+function saleValue(b) {
+  return IND[b.ind].cost * b.incMult * hiddenMult(b) * levelMult(b.level) * SALE_MULT;
+}
+// What fixing problem p at business b costs, and how long the work takes
+function fixCost(b, p) {
+  return Math.max(10, IND[b.ind].cost * Math.sqrt(b.level) * PROBLEMS[p].costMult * priceMult());
+}
+const fixSeconds = (b, p) => FIX_SECONDS[IND[b.ind].tier] * PROBLEMS[p].timeMult;
+const sellSeconds = b => SELL_SECONDS[IND[b.ind].tier];
+
+// Cash from a sale: all of it is yours to spend, but only the PROFIT
+// counts as "earned" (towards tiers, upgrades and Legacy stars), so
+// buying and selling the same thing can't pump up your Legacy.
+function addProceeds(amount, basis) {
+  state.cash += amount;
+  const profit = Math.max(0, amount - basis);
+  state.earnedRun += profit;
+  state.earnedAll += profit;
+  return amount - basis;
+}
+
+// Due diligence on listing i: pay a little to find out what the seller
+// isn't telling you.
+const ddCost = l => Math.max(5, listingPrice(l) * DD_COST);
+function checkListing(i) {
+  const l = state.deals[i];
+  if (!l || l.checked) return false;
+  const cost = ddCost(l);
+  if (cost > state.cash) { toast("Not enough cash for due diligence"); return false; }
+  state.cash -= cost;
+  l.checked = true;
+  state.stats.checks++;
+  toast(l.hidden ? `Due diligence found a problem: ${PROBLEMS[l.hidden].name.toLowerCase()}` : "Due diligence: no hidden problems. It's clean.");
+  dealsKey = "";
+  dirty = true;
+  render(true);
+  return true;
+}
+
+// Start fixing problem p at business id. The mini game comes first (see
+// MINI GAMES below); this is called when you pass it, or straight away
+// for a renovation, which has no game.
+function startFix(id, p) {
+  const b = state.biz.find(x => x.id === id);
+  if (!b || !problemsOf(b).includes(p)) return false;
+  if (b.fixing) { toast("One project at a time at each business"); return false; }
+  if (b.selling) { toast("It's listed for sale. Take it off the market first."); return false; }
+  const cost = fixCost(b, p);
+  if (cost > state.cash) { toast("Not enough cash for the work"); return false; }
+  state.cash -= cost;
+  b.paid += cost;                      // what you've put into it, for working out profit when you sell
+  b.fixing = { p, until: Date.now() + fixSeconds(b, p) * 1000 };
+  dirty = true;
+  render(true);
+  return true;
+}
+// The work at business b is done: take the problem away.
+function finishFix(b) {
+  const p = b.fixing.p;
+  b.fixing = null;
+  if (p === "rough") {                       // the area's no better, but your storefront is
+    b.incMult = b.incMult / LOCATIONS[0].inc * LOCATIONS[1].inc;
+    b.loc = 1;
+  } else if (PROBLEMS[p].hidden) {
+    if (b.hidden === p) b.hidden = null;
+  } else if (QUIRKS[b.quirk].fix === p) {    // the old quirk goes, "Turned around" replaces it
+    b.incMult = b.incMult / QUIRKS[b.quirk].inc * QUIRKS[TURNED_AROUND].inc;
+    b.quirk = TURNED_AROUND;
+  }
+  state.stats.fixes++;
+  toast(`${b.name}: ${PROBLEMS[p].name.toLowerCase()} fixed. It earns more and is worth more now.`);
+  dirty = true;
+}
+
+// Put business id on the market. A buyer turns up after sellSeconds();
+// the price is worked out when they do, so a fix that finishes first counts.
+function listForSale(id) {
+  const b = state.biz.find(x => x.id === id);
+  if (!b || b.selling) return false;
+  if (b.fixing) { toast("Finish the work first, or buyers will pay less"); return false; }
+  b.selling = { until: Date.now() + sellSeconds(b) * 1000 };
+  toast(`${b.name} is on the market. A buyer will turn up in ${duration(sellSeconds(b) * 1000)}.`);
+  dirty = true;
+  render(true);
+  return true;
+}
+function cancelSale(id) {
+  const b = state.biz.find(x => x.id === id);
+  if (!b || !b.selling) return false;
+  b.selling = null;
+  toast(`${b.name} is off the market`);
+  dirty = true;
+  render(true);
+  return true;
+}
+function finishSale(b) {
+  const value = saleValue(b);
+  const profit = addProceeds(value, b.paid);
+  state.biz = state.biz.filter(x => x !== b);
+  state.stats.sold++;
+  state.stats.flipProfit += profit;
+  if (sheetBizId === b.id) closeSheet();
+  showModal("Sold!", `${b.name} has a new owner. You put ${money(b.paid)} into it, so that's a ` +
+    (profit >= 0 ? `profit of ${money(profit)}.` : `loss of ${money(-profit)}.`), "+" + money(value));
+  dirty = true;
+}
+// Called every frame and after time away: finish any work or sales that are due.
+function finishProjects(now = Date.now()) {
+  for (const b of [...state.biz]) {
+    if (b.fixing && now >= b.fixing.until) finishFix(b);
+    if (b.selling && now >= b.selling.until && !modalOpen()) finishSale(b);
+  }
 }
 
 
@@ -911,6 +1143,9 @@ function catchUp(showMessage) {
   const capped = Math.min(away, OFFLINE_CAP_HOURS * 3600e3);
   const earned = earnBetween(state.lastTick, state.lastTick + capped);
   state.lastTick = now;
+  // Work and sales that finished while you were away. (Income while away
+  // was counted at the old rate, before the fix: a little on the safe side.)
+  finishProjects(now);
   if (state.nextEventAt < now) state.nextEventAt = now + 20e3;
   if (now >= state.dealsRefreshAt) refreshDeals();
   if (showMessage && away > 60e3 && earned > 0) {
@@ -928,6 +1163,7 @@ function frame(nowPerf) {
   if (gap > 60e3) catchUp(true);
   else if (gap > 0) { earnBetween(state.lastTick, now); state.lastTick = now; }
   if (now >= state.dealsRefreshAt) refreshDeals();
+  finishProjects(now);
   updateEvent(now);
   render(false);
   if (nowPerf - lastSlowRender > 250) { lastSlowRender = nowPerf; render(true); }
@@ -969,9 +1205,14 @@ function validState(s) {
     incMult: Number.isFinite(b.incMult) && b.incMult > 0 ? b.incMult : 1,
     level: Math.max(1, Math.floor(Number(b.level) || 1)), paid: Number(b.paid) || 0,
     viralUntil: Number(b.viralUntil) || 0, inspectUntil: Number(b.inspectUntil) || 0,
+    hidden: PROBLEMS[b.hidden]?.hidden ? b.hidden : null,
+    fixing: b.fixing && PROBLEMS[b.fixing.p] && Number.isFinite(b.fixing.until) ? { p: b.fixing.p, until: b.fixing.until } : null,
+    selling: b.selling && Number.isFinite(b.selling.until) ? { until: b.selling.until } : null,
+    fixRetryAt: Number(b.fixRetryAt) || 0,
   }));
   out.nextBizId = Math.max(Number(s.nextBizId) || 1, ...out.biz.map(b => b.id + 1), 1);
-  out.deals = Array.isArray(s.deals) ? s.deals.filter(l => l && IND[l.ind] && Number.isFinite(l.priceMult) && Number.isFinite(l.incMult)) : [];
+  out.deals = Array.isArray(s.deals) ? s.deals.filter(l => l && IND[l.ind] && Number.isFinite(l.priceMult) && Number.isFinite(l.incMult))
+    .map(l => Object.assign({}, l, { hidden: PROBLEMS[l.hidden]?.hidden ? l.hidden : null, checked: !!l.checked })) : [];
   out.upgrades = {};
   for (const id in (s.upgrades || {})) if (UPG[id]) out.upgrades[id] = true;
   for (const k of ["cash", "earnedRun", "earnedAll", "legacy", "savedAt", "lastTick", "nextEventAt", "boomUntil", "dealsRefreshAt", "scoutReadyAt"]) {
@@ -1001,6 +1242,7 @@ async function saveCloud() {
   finally { cloudWriting = false; if (cloudAgain) { cloudAgain = false; saveCloud(); } }
 }
 function adopt(newState, message) {
+  if (sheetOpen()) closeSheet();
   state = newState;
   catchUp(false);
   if (!state.deals.length) refreshDeals();
@@ -1058,7 +1300,12 @@ function short(n) {
   else {
     const tier = Math.floor(Math.log10(n) / 3);
     if (tier >= SUFFIXES.length) out = n.toExponential(2);
-    else { const s = n / Math.pow(1000, tier); out = s.toFixed(s < 10 ? 2 : s < 100 ? 1 : 0) + SUFFIXES[tier]; }
+    else {
+      let t = tier, s = n / Math.pow(1000, t);
+      // 999,960 would round to "1000K": show it as "1.00M" instead
+      if (Number(s.toFixed(s < 10 ? 2 : s < 100 ? 1 : 0)) >= 1000 && t + 1 < SUFFIXES.length) { t++; s /= 1000; }
+      out = s.toFixed(s < 10 ? 2 : s < 100 ? 1 : 0) + SUFFIXES[t];
+    }
   }
   return (neg ? "-" : "") + out;
 }
@@ -1096,9 +1343,12 @@ function updateDeals() {
       row.innerHTML = `${logoHtml(l.name, ind.sector)}
         <div><h3 class="cond">${esc(l.name)}</h3><div class="sub">${esc(ind.name)} · ${esc(l.city)} · ${SECTORS[ind.sector].name}</div></div>
         <button class="buy" id="deal-${i}"><span class="pr"></span><small>buy it</small></button>
-        <div class="chips"><span class="chip ${deal.tone}">${deal.text}</span><span class="chip ${locn.tone}">${locn.name}</span>${l.quirk ? `<span class="chip ${q.tone}">${esc(q.name)}</span>` : ""}</div>
-        <div class="line"></div>`;
+        <div class="chips"><span class="chip ${deal.tone}">${deal.text}</span><span class="chip ${locn.tone}">${locn.name}</span>${l.quirk ? `<span class="chip ${q.tone}">${esc(q.name)}</span>` : ""}${
+          !l.checked ? "" : l.hidden ? `<span class="chip bad">Hidden: ${esc(PROBLEMS[l.hidden].name)}</span>` : `<span class="chip good">Checked: clean</span>`}</div>
+        <div class="line"></div>
+        ${l.checked ? "" : `<div class="acts"><button class="smallbtn" id="dd-${i}"><span class="ddc"></span></button></div>`}`;
       row.querySelector(".buy").addEventListener("click", () => buyListing(i));
+      row.querySelector(`#dd-${i}`)?.addEventListener("click", () => checkListing(i));
       list.appendChild(row);
     });
   }
@@ -1112,6 +1362,8 @@ function updateDeals() {
     const btn = row.querySelector(".buy");
     btn.setAttribute("aria-disabled", String(!can));
     btn.querySelector(".pr").textContent = money(price);
+    const dd = row.querySelector(".ddc");
+    if (dd) { const c = ddCost(l); dd.textContent = `Due diligence · ${money(c)}`; dd.parentNode.setAttribute("aria-disabled", String(c > state.cash)); }
     const owned = ownedOf(l.ind);
     row.querySelector(".line").textContent = `Earns ${money(inc)}/sec · pays for itself in ${duration(price / inc * 1000)}` + (owned ? ` · you own ${owned} (${unitsOf(l.ind)} levels)` : "");
   });
@@ -1150,8 +1402,10 @@ function updateEmpire() {
         <div><h3 class="cond">${esc(b.name)} <span class="lvl" style="font-family:var(--mono);font-size:16px;color:var(--muted)"></span></h3>
         <div class="sub">${esc(ind.name)} · ${esc(b.city)} · ${esc(LOCATIONS[b.loc].name)}${b.quirk ? " · " + esc(QUIRKS[b.quirk].name) : ""}</div></div>
         <button class="buy" id="exp-${b.id}"><span class="pr"></span><small class="ct"></small></button>
-        <div class="chips"></div><div class="line"></div>`;
+        <div class="chips"></div><div class="line"></div>
+        <div class="acts"><button class="smallbtn" id="mng-${b.id}">Manage · fix · sell</button></div>`;
       row.querySelector(".buy").addEventListener("click", () => expandBiz(b.id));
+      row.querySelector(".acts button").addEventListener("click", () => openSheet(b.id));
       list.appendChild(row);
     }
   }
@@ -1168,6 +1422,9 @@ function updateEmpire() {
     const chips = [];
     if (now < b.viralUntil) chips.push(`<span class="chip great">Viral ${Math.ceil((b.viralUntil - now) / 1000)}s</span>`);
     if (now < b.inspectUntil) chips.push(`<span class="chip bad">Half income ${duration(b.inspectUntil - now)}</span>`);
+    if (b.fixing) chips.push(`<span class="chip">Fixing: done in ${duration(b.fixing.until - now)}</span>`);
+    if (b.selling) chips.push(`<span class="chip great">For sale: buyer in ${duration(b.selling.until - now)}</span>`);
+    for (const p of problemsOf(b)) if (!(b.fixing && b.fixing.p === p)) chips.push(`<span class="chip bad">${esc(PROBLEMS[p].name)}</span>`);
     const chipBox = row.querySelector(".chips");
     const html = chips.join("");
     if (chipBox.innerHTML !== html) chipBox.innerHTML = html;
@@ -1237,7 +1494,9 @@ function updateStats() {
     ["Income", money(incomeNow()) + "/sec"], ["Businesses", state.biz.length],
     ["Legacy", `★ ${state.legacy} (+${Math.round(state.legacy * LEGACY_BONUS * 100)}%)`],
     ["Hustles", state.stats.taps.toLocaleString("en-US")], ["Jobs finished", state.stats.jobs.toLocaleString("en-US")],
-    ["Businesses bought", state.stats.bought], ["Events answered", state.stats.events], ["Times retired", state.stats.retires],
+    ["Businesses bought", state.stats.bought], ["Businesses sold", state.stats.sold],
+    ["Profit from selling", money(state.stats.flipProfit)], ["Problems fixed", state.stats.fixes], ["Due diligence checks", state.stats.checks],
+    ["Events answered", state.stats.events], ["Times retired", state.stats.retires],
     ["Playing since", new Date(state.stats.startedAt).toLocaleDateString()],
   ];
   $("stats").innerHTML = items.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
@@ -1263,6 +1522,7 @@ function render(full) {
   updateUpgrades();
   updateRetire();
   if ($("pane-set").classList.contains("on")) updateStats();
+  renderSheet(false);
 }
 function rebuildLists() { dealsKey = empireKey = upgradeKey = ""; render(true); }
 
@@ -1314,6 +1574,239 @@ function showModal(title, text, amount) {
   $("modalOk").focus();
 }
 const modalOpen = () => $("modalBack").classList.contains("on");
+
+
+// ---------- The business sheet: manage one business ----------
+// A pop-up card for one business you own: what it's worth, what's wrong
+// with it, buttons to fix things, and a button to sell it. The mini games
+// play inside this same card.
+let sheetBizId = 0;          // business shown on the sheet (0 = closed)
+let sheetMode = "info";      // "info" or "game" (a mini game is running)
+let gameCleanup = null;      // stops a running mini game's timers
+const sheetOpen = () => $("sheetBack").classList.contains("on");
+
+function openSheet(id) {
+  sheetBizId = id;
+  sheetMode = "info";
+  $("sheetBack").classList.add("on");
+  renderSheet();
+  const first = $("sheetBody").querySelector("button:not([aria-disabled='true'])") || $("sheetClose");
+  first.focus();
+}
+function closeSheet() {
+  if (gameCleanup) { gameCleanup(); gameCleanup = null; }
+  sheetBizId = 0;
+  sheetMode = "info";
+  $("sheetBack").classList.remove("on");
+  render(true);
+}
+// Draw the info view. Called when it opens, after every action, and once
+// a second while open (so timers count down). Keeps keyboard/controller
+// focus on the same button across redraws.
+let sheetKey = "";
+function renderSheet(force = true) {
+  if (!sheetOpen() || sheetMode !== "info") return;
+  const b = state.biz.find(x => x.id === sheetBizId);
+  if (!b) { closeSheet(); return; }
+  const ind = IND[b.ind], now = Date.now();
+  const value = saleValue(b), probs = problemsOf(b);
+  const focusId = document.activeElement?.id;
+  $("sheetTitle").textContent = b.name;
+  const rows = probs.map(p => {
+    const P = PROBLEMS[p];
+    const busy = b.fixing && b.fixing.p === p;
+    const wait = Math.ceil(((b.fixRetryAt || 0) - now) / 1000);
+    let btn;
+    if (busy) btn = `<span class="chip">Work done in ${duration(b.fixing.until - now)}</span>`;
+    else if (b.fixing || b.selling) btn = `<span class="chip">Busy</span>`;
+    else if (wait > 0) btn = `<span class="chip">Try again in ${wait}s</span>`;
+    else {
+      const cost = fixCost(b, p), can = cost <= state.cash;
+      btn = `<button class="smallbtn" id="fix-${p}" data-fix="${p}" aria-disabled="${!can}">${esc(P.fixLabel)} · ${money(cost)}</button>`;
+    }
+    return `<li><span class="chip bad">${esc(P.name)}</span>${P.hidden ? ' <small class="muted">(hidden by the seller)</small>' : ""}<div>${btn}</div></li>`;
+  }).join("");
+  const profit = value - b.paid;
+  let sell;
+  if (b.selling) sell = `<p>On the market. A buyer turns up in <strong>${duration(b.selling.until - now)}</strong>.</p>
+      <button class="bigbtn cond" id="sellCancel">Take it off the market</button>`;
+  else sell = `<p>A buyer would pay about <strong>${money(value)}</strong> after fees.
+      You've put in ${money(b.paid)}, so that's a <strong class="${profit >= 0 ? "up" : "down"}">${profit >= 0 ? "profit" : "loss"} of ${money(Math.abs(profit))}</strong>.
+      Finding a buyer takes about ${duration(sellSeconds(b) * 1000)}; it keeps earning until then.</p>
+      <button class="bigbtn go cond" id="sellBtn">List it for sale</button>`;
+  const html = `<p class="sub">${esc(ind.name)} · ${esc(b.city)} · ${esc(LOCATIONS[b.loc].name)} · ${esc(QUIRKS[b.quirk].name)} · Lv ${b.level}</p>
+    <p>Earns <strong>${money(bizIncome(b) * tempMult(b, now))}/sec</strong> for you.</p>
+    <h3 class="cond">Problems</h3>
+    ${probs.length ? `<ul class="probs">${rows}</ul><p class="note">Fixing one: pass a quick challenge, pay for the work, then wait for it to finish. A fixed business earns more and sells for more.</p>`
+                   : `<p class="note">Nothing wrong here. Buyers like that.</p>`}
+    <h3 class="cond">Sell it</h3>${sell}`;
+  if (!force && html === sheetKey) return;
+  sheetKey = html;
+  $("sheetBody").innerHTML = html;
+  for (const btn of $("sheetBody").querySelectorAll("[data-fix]")) btn.addEventListener("click", () => tryFix(b.id, btn.dataset.fix));
+  $("sellBtn")?.addEventListener("click", () => armOrRun($("sellBtn"), "Tap again to list it", () => { listForSale(b.id); renderSheet(); }));
+  $("sellCancel")?.addEventListener("click", () => { cancelSale(b.id); renderSheet(); });
+  if (focusId && $(focusId)) $(focusId).focus();
+  else if (sheetOpen() && !$("sheetBack").contains(document.activeElement)) ($("sheetBody").querySelector("button") || $("sheetClose")).focus();
+}
+// Fix button: renovations just start; everything else plays its mini game first.
+function tryFix(id, p) {
+  const b = state.biz.find(x => x.id === id);
+  if (!b) return;
+  if (fixCost(b, p) > state.cash) { toast("Not enough cash for the work"); return; }
+  const game = PROBLEMS[p].game;
+  if (!game) { startFix(id, p); renderSheet(); return; }
+  sheetMode = "game";
+  const box = $("sheetBody");
+  box.innerHTML = "";
+  gameCleanup = MINI_GAMES[game](box, passed => {
+    gameCleanup = null;
+    const b2 = state.biz.find(x => x.id === id);
+    if (b2) {
+      if (passed) { if (startFix(id, p)) toast(`Nice work. The fix for ${PROBLEMS[p].name.toLowerCase()} is under way: done in ${duration(fixSeconds(b2, p) * 1000)}.`); }
+      else { b2.fixRetryAt = Date.now() + FIX_RETRY * 1000; toast(`That didn't go well. Try again in ${FIX_RETRY}s.`); }
+    }
+    sheetMode = "info";
+    renderSheet();
+    ($("sheetBody").querySelector("button") || $("sheetClose")).focus();
+  });
+}
+
+
+/* ---------------------------------------------------------------------
+   MINI GAMES
+   Each one draws itself into `box`, then calls done(true) for a pass or
+   done(false) for a fail. Each returns a cleanup function that stops its
+   timers if the sheet is closed part way. Everything is plain buttons, so
+   touch, mouse, keyboard (arrows + Enter) and a controller (D-pad + A)
+   all work the same way.
+   --------------------------------------------------------------------- */
+const shuffle = list => { const a = [...list]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+
+// Reviews: pick the best reply to each angry customer. good = fixes it,
+// the other two sound reasonable but make it worse or do nothing.
+const REVIEWS = [
+  { text: "Waited 40 minutes and nobody even said sorry.", good: "Apologize, say what you changed, invite them back on the house", bad: "Explain that it was a really busy night", meh: "Thanks for the feedback!" },
+  { text: "Rude guy at the counter. Never again.", good: "Apologize, say you've talked with the team, offer to make it right", bad: "Ask which employee so you can defend them", meh: "Sorry you feel that way." },
+  { text: "Way overpriced for what you get.", good: "Thank them and point out the new lower-price option", bad: "Explain your costs went up and that's not your fault", meh: "We value all our customers." },
+  { text: "Place was dirty. Gross.", good: "Apologize, say you hired a new cleaning crew, invite them back", bad: "Say it was clean when you checked", meh: "We'll pass this on." },
+  { text: "They got my order wrong TWICE.", good: "Apologize, refund it, and say how you're double-checking orders now", bad: "Say mistakes happen to everyone", meh: "Please contact us privately." },
+  { text: "Booked online and they lost my booking.", good: "Apologize, explain the booking fix, and give them priority next time", bad: "Say they must have typed it wrong", meh: "Hmm, that's odd." },
+  { text: "The owner doesn't care about customers.", good: "Reply as the owner, by name, and ask how you can make it right", bad: "List everything you do for the community", meh: "Have a nice day." },
+  { text: "Broken stuff everywhere. Fix it!", good: "Thank them: it's fixed now, and here's a photo", bad: "Say repairs are expensive and they should understand", meh: "Noted." },
+];
+function gameReviews(box, done) {
+  const rounds = shuffle(REVIEWS).slice(0, 4);
+  let i = 0, right = 0;
+  const step = () => {
+    if (i >= rounds.length) return done(right >= 3);
+    const r = rounds[i];
+    const opts = shuffle([["good", r.good], ["bad", r.bad], ["meh", r.meh]]);
+    box.innerHTML = `<h3 class="cond">Answer the reviews (${i + 1} of ${rounds.length})</h3>
+      <p class="note">Win back at least 3 of 4 customers. The best replies say sorry, say what changed, and invite them back.</p>
+      <blockquote class="review">★☆☆☆☆ "${esc(r.text)}"</blockquote>
+      <div class="gopts">${opts.map(([k, t], n) => `<button class="smallbtn" id="g-${n}" data-k="${k}">${esc(t)}</button>`).join("")}</div>`;
+    for (const btn of box.querySelectorAll("[data-k]")) btn.addEventListener("click", () => {
+      if (btn.dataset.k === "good") { right++; toast("They updated it to 4 stars!"); }
+      else toast(btn.dataset.k === "bad" ? "They replied angrily. Ouch." : "No response. Nothing changed.");
+      i++; step();
+    });
+    $("g-0").focus();
+  };
+  step();
+  return () => {};
+}
+
+// Books: one charge was entered twice. Find it. 3 rounds, get 2 right.
+const LEDGER_ITEMS = ["Rent", "Payroll", "Electric bill", "Water bill", "Supplies", "Insurance", "Internet", "Repairs", "Advertising", "Delivery fees",
+                      "Card fees", "Cleaning", "Phone bill", "Software", "Inventory", "Uniforms"];
+function gameBooks(box, done) {
+  let round = 0, right = 0;
+  const step = () => {
+    if (round >= 3) return done(right >= 2);
+    const items = shuffle(LEDGER_ITEMS).slice(0, 5).map(name => ({ name, amt: Math.round(50 + Math.random() * 3000) }));
+    const twin = Math.floor(Math.random() * items.length);
+    const lines = [...items];
+    lines.splice(twin + 1 + Math.floor(Math.random() * (items.length - twin)), 0, { ...items[twin], dupe: true });   // the copy always comes after the original
+    box.innerHTML = `<h3 class="cond">Clean up the books (${round + 1} of 3)</h3>
+      <p class="note">One charge got entered twice. Tap either copy. Get 2 of 3 right.</p>
+      <div class="ledger-lines">${lines.map((l, n) => `<button class="smallbtn line-btn" id="g-${n}" data-d="${l.dupe || l === items[twin] ? 1 : 0}"><span>${esc(l.name)}</span><span>$${l.amt.toLocaleString("en-US")}</span></button>`).join("")}</div>`;
+    for (const btn of box.querySelectorAll("[data-d]")) btn.addEventListener("click", () => {
+      if (btn.dataset.d === "1") { right++; toast("Found it. The books balance."); }
+      else toast("That one was fine.");
+      round++; step();
+    });
+    $("g-0").focus();
+  };
+  step();
+  return () => {};
+}
+
+// Machine: a needle swings across a gauge. Press when it's in the green.
+// Land 3 hits before you miss 3 times. The green zone shrinks each hit.
+function gameMachine(box, done) {
+  const slow = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const speed = slow ? 0.35 : 0.6;          // gauge sweeps per second
+  let hits = 0, misses = 0, zone = 0.24, zoneAt = 0.2 + Math.random() * 0.55, t0 = performance.now(), raf = 0, over = false;
+  box.innerHTML = `<h3 class="cond">Repair the machines</h3>
+    <p class="note">Press when the needle is in the green. 3 hits before 3 misses.</p>
+    <div class="gauge"><i class="zone"></i><i class="needle"></i></div>
+    <p class="gstat" id="gStat">Hits 0 of 3 · misses 0 of 3</p>
+    <button class="bigbtn go cond" id="g-0">Tighten!</button>`;
+  const zoneEl = box.querySelector(".zone"), needle = box.querySelector(".needle");
+  const pos = () => { const x = ((performance.now() - t0) / 1000 * speed) % 2; return x < 1 ? x : 2 - x; };   // 0..1..0
+  const drawZone = () => { zoneEl.style.left = zoneAt * 100 + "%"; zoneEl.style.width = zone * 100 + "%"; };
+  const tick = () => { needle.style.left = pos() * 100 + "%"; raf = requestAnimationFrame(tick); };
+  drawZone(); tick();
+  $("g-0").addEventListener("click", () => {
+    if (over) return;
+    const p = pos();
+    if (p >= zoneAt && p <= zoneAt + zone) { hits++; zone = Math.max(0.1, zone - 0.05); zoneAt = Math.random() * (1 - zone); drawZone(); }
+    else misses++;
+    $("gStat").textContent = `Hits ${hits} of 3 · misses ${misses} of 3`;
+    if (hits >= 3 || misses >= 3) { over = true; cancelAnimationFrame(raf); setTimeout(() => done(hits >= 3), 300); }
+  });
+  $("g-0").focus();
+  return () => { over = true; cancelAnimationFrame(raf); };
+}
+
+// Hiring: pick the best person you can afford. 3 rounds, get 2 right.
+function gameHire(box, done) {
+  let round = 0, right = 0;
+  const makeRound = () => {
+    for (;;) {   // keep rolling until there's exactly one right answer and a tempting wrong one
+      const want = Math.random() < 0.5 ? "rel" : "exp";
+      const budget = 18 + Math.floor(Math.random() * 8);
+      const people = [0, 1, 2].map(() => ({ name: pick(NAME_PARTS.first) + " " + pick(NAME_PARTS.surname),
+        rel: 1 + Math.floor(Math.random() * 5), exp: 1 + Math.floor(Math.random() * 5), wage: 14 + Math.floor(Math.random() * 16) }));
+      const afford = people.filter(c => c.wage <= budget);
+      if (!afford.length || new Set(people.map(c => c.name)).size < 3) continue;
+      const best = Math.max(...afford.map(c => c[want]));
+      if (afford.filter(c => c[want] === best).length !== 1) continue;
+      if (!people.some(c => c.wage > budget && c[want] > best)) continue;   // the trap: better, but too expensive
+      return { want, budget, people, answer: afford.find(c => c[want] === best) };
+    }
+  };
+  const stars = n => "★".repeat(n) + "☆".repeat(5 - n);
+  const step = () => {
+    if (round >= 3) return done(right >= 2);
+    const r = makeRound();
+    box.innerHTML = `<h3 class="cond">Hire a good manager (${round + 1} of 3)</h3>
+      <p class="note">Budget: <strong>$${r.budget}/hr</strong>. Pick the most <strong>${r.want === "rel" ? "reliable" : "experienced"}</strong> person you can afford. Get 2 of 3 right.</p>
+      <div class="gopts">${r.people.map((c, n) => `<button class="smallbtn cand" id="g-${n}" data-n="${n}"><strong>${esc(c.name)}</strong>
+        <span>Reliable ${stars(c.rel)}</span><span>Experience ${stars(c.exp)}</span><span>Wants $${c.wage}/hr</span></button>`).join("")}</div>`;
+    for (const btn of box.querySelectorAll("[data-n]")) btn.addEventListener("click", () => {
+      const c = r.people[Number(btn.dataset.n)];
+      if (c === r.answer) { right++; toast("Good hire."); }
+      else toast(c.wage > r.budget ? "Over budget. You can't afford them." : "Someone else was a better fit.");
+      round++; step();
+    });
+    $("g-0").focus();
+  };
+  step();
+  return () => {};
+}
+const MINI_GAMES = { reviews: gameReviews, books: gameBooks, machine: gameMachine, hire: gameHire };
 
 // ---------- The skyline: one building per business you own ----------
 const canvas = $("skyline"), ctx = canvas.getContext("2d");
@@ -1393,13 +1886,15 @@ function drawSkyline(dt) {
    ===================================================================== */
 $("hustle").addEventListener("pointerdown", e => {
   e.preventDefault();
-  if (modalOpen()) return;
+  if (modalOpen() || sheetOpen()) return;
   hustle(e.clientX, e.clientY);
   $("hustle").classList.add("pressed");
 });
 for (const ev of ["pointerup", "pointerleave", "pointercancel"]) $("hustle").addEventListener(ev, () => $("hustle").classList.remove("pressed"));
 $("hustle").addEventListener("click", e => { if (e.detail === 0) hustle(); });   // Enter/Space on the focused button
 $("modalOk").addEventListener("click", () => $("modalBack").classList.remove("on"));
+$("sheetClose").addEventListener("click", closeSheet);
+$("sheetBack").addEventListener("click", e => { if (e.target === $("sheetBack")) closeSheet(); });   // tap outside the card
 $("scout").addEventListener("click", scoutDeals);
 
 const TAB_ORDER = ["deals", "empire", "upg", "retire", "set"];
@@ -1434,6 +1929,7 @@ $("retire").addEventListener("click", () => {
   armOrRun($("retire"), "Tap again to retire", retire);
 });
 $("wipe").addEventListener("click", () => armOrRun($("wipe"), "Tap again to wipe it all", () => {
+  if (sheetOpen()) closeSheet();
   state = freshState(); refreshDeals(); if (activeEvent) closeEvent(); rebuildLists(); saveNow(); toast("Save wiped. Fresh start.");
 }));
 $("copySave").addEventListener("click", async () => {
@@ -1454,6 +1950,12 @@ $("importSave").addEventListener("click", () => {
 document.addEventListener("keydown", e => {
   if (e.target.tagName === "TEXTAREA") return;
   if (modalOpen()) { if (["Enter", " ", "Escape"].includes(e.key)) { e.preventDefault(); $("modalOk").click(); } return; }
+  if (sheetOpen()) {            // inside the business sheet: arrows move, Enter/Space press, Escape closes
+    const map = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" };
+    if (map[e.key]) { e.preventDefault(); moveFocus(map[e.key]); }
+    if (e.key === "Escape") closeSheet();
+    return;
+  }
   const map = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" };
   if (map[e.key]) { e.preventDefault(); moveFocus(map[e.key]); return; }
   if (e.key === " " && document.activeElement?.tagName !== "BUTTON") { e.preventDefault(); hustle(); return; }
@@ -1463,9 +1965,11 @@ document.addEventListener("keydown", e => {
 
 // Move focus to the nearest visible button in a direction
 function moveFocus(dir) {
-  const buttons = [...document.querySelectorAll("button")].filter(b => b.offsetParent !== null);
+  // While the business sheet is open, only its own buttons can get focus
+  const scope = sheetOpen() ? $("sheetBack") : document;
+  const buttons = [...scope.querySelectorAll("button")].filter(b => b.offsetParent !== null || b.closest("#sheetBack"));
   const cur = buttons.includes(document.activeElement) ? document.activeElement : null;
-  if (!cur) { $("hustle").focus(); return; }
+  if (!cur) { (sheetOpen() ? buttons[0] : $("hustle"))?.focus(); return; }
   const a = cur.getBoundingClientRect(), ax = a.left + a.width / 2, ay = a.top + a.height / 2;
   let best = null, bestScore = Infinity;
   for (const b of buttons) {
@@ -1491,6 +1995,14 @@ function pollGamepads() {
     const down = pad.buttons.map(b => b.pressed);
     const pressed = i => down[i] && !prev[i];          // only the moment it goes down
     if (modalOpen()) { if (pressed(0) || pressed(1)) $("modalOk").click(); }
+    else if (sheetOpen()) {     // business sheet: A presses, B closes, D-pad moves
+      if (pressed(0)) { const el = document.activeElement; if (el && el.tagName === "BUTTON" && $("sheetBack").contains(el)) el.click(); }
+      if (pressed(1)) closeSheet();
+      if (pressed(12)) moveFocus("up");
+      if (pressed(13)) moveFocus("down");
+      if (pressed(14)) moveFocus("left");
+      if (pressed(15)) moveFocus("right");
+    }
     else {
       if (pressed(0)) { const el = document.activeElement; if (el && el.tagName === "BUTTON") el.click(); else hustle(); }
       if (pressed(2)) hustle();
@@ -1539,7 +2051,8 @@ else start(window.claude?.hot?.data ?? {});
 window.T = { get state() { return state; }, set state(s) { state = s; }, INDUSTRIES, UPGRADES, IND, hustle, buyListing, expandBiz, buyUpgrade,
   baseIncome, bizIncome, incomeNow, tapValue, listingPrice, listingIncome, expandCost, maxExpand, legacyGain, retire, earnBetween, upgradeAvailable,
   validState, encodeSave, decodeSave, catchUp, render, rebuildLists, refreshDeals, makeListing, makeEvent, chooseEvent, saveNow, short,
-  tierUnlocked, sectorLevels, get activeEvent() { return activeEvent; }, set activeEvent(e) { activeEvent = e; }, showEvent };
+  tierUnlocked, sectorLevels, problemsOf, saleValue, fixCost, checkListing, startFix, finishProjects, listForSale, cancelSale, openSheet, closeSheet,
+  tryFix, PROBLEMS, QUIRKS, LOCS: LOCATIONS, get activeEvent() { return activeEvent; }, set activeEvent(e) { activeEvent = e; }, showEvent };
 </script>
 </body>
 </html>
