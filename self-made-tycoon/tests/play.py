@@ -118,6 +118,9 @@ with sync_playwright() as p:
     ok(not page.locator("#event").is_visible(), "an ignored event goes away after 25s")
 
     # --- temporary effects are counted correctly over time ---
+    # The random events above can include a buyout that sells the only
+    # business, so make sure there is one to test with.
+    page.evaluate("() => { if (!T.state.biz.length) T.state.biz.push({id: 98, ind: 'lawn', name: 'Test Lawn', city: 'Reno', loc: 1, quirk: 0, incMult: 1, level: 1, paid: 25}); }")
     page.evaluate("() => { T.state.boomUntil = 0; T.state.biz.forEach(b => { b.viralUntil = 0; b.inspectUntil = 0; }); }")
     inc = S("T.baseIncome()")
     got = page.evaluate("() => { const b = T.state.biz[0]; const t = Date.now(); b.viralUntil = t + 10000; const c0 = T.state.cash; T.earnBetween(t, t + 20000); b.viralUntil = 0; return [T.state.cash - c0, T.bizIncome(b)]; }")
@@ -144,7 +147,17 @@ with sync_playwright() as p:
     ok(abs(S("T.state.cash") - inc * 8 * 3600) / (inc * 8 * 3600) < 0.01, "time away is capped at 8 hours")
 
     # --- damaged save ---
-    page.evaluate("() => localStorage.setItem('selfMadeTycoon.save.v1', '{broken')"); page.reload(); page.wait_for_timeout(500)
+    # The damage has to happen before the game's own script runs. Setting it
+    # from the page and then reloading doesn't work: the game saves itself
+    # as the page unloads, which quietly writes a good save back over the
+    # broken one (so the old version of this check never really tested it).
+    page.close()
+    page = ctx.new_page(); page.on("pageerror", lambda e: errors.append(str(e)))
+    S = lambda expr: page.evaluate("() => " + expr)
+    page.add_init_script("""if (!sessionStorage.getItem('broke')) { sessionStorage.setItem('broke', '1');
+        localStorage.setItem('selfMadeTycoon.save.v1', '{broken'); }""")
+    page.goto(PAGE); page.wait_for_timeout(500)
+    ok(S("T.state.biz.length") == 0 and S("T.state.stats.taps") == 0, "the broken save really was the one loaded (fresh game, nothing carried over)")
     ok(S("T.state.cash") >= 0 and S("T.state.deals.length") >= 4 and not errors, "a corrupted save starts a fresh game instead of crashing")
 
     # --- retiring needs two presses ---
