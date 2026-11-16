@@ -226,7 +226,7 @@ function updateStats() {
 
 function render(full) {
   const now = Date.now();
-  $("cash").textContent = money(state.cash);
+  $("cash").textContent = money(shownCash());     // counts up smoothly (13-fx.js); state.cash is the real number
   $("ips").textContent = money(incomeNow(now) + investNet()) + "/sec";
   $("tapv").textContent = money(tapValue()) + " per hustle";
   $("owned").textContent = state.biz.length + (state.biz.length === 1 ? " business" : " businesses");

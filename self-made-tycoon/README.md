@@ -47,7 +47,9 @@ Besides running businesses, you can put money to work the ways real entrepreneur
 - **Nine sectors** (Food, Auto, Tech and so on), each with three "double this sector" upgrades.
 - **Events with choices:** buyout offers, a business going viral, surprise inspections, risky partner pitches, a hot economy, and lucky breaks. Investments can add their own, such as buying the dip after a crash.
 - **Retiring:** start over for Legacy stars, each worth +10% to everything.
-- **Your skyline:** a night skyline grows with one building for each business you own.
+- **Your skyline:** grows with one building for each business you own. A new business rises out of the ground, expanding makes it taller, and a sold one sinks away. Small shops get striped awnings, the biggest businesses get antennas.
+- **Day and night:** a full day passes every 12 minutes, with sunrise, clouds by day, sunset, and lit windows and stars at night. The left panel's color follows the sky. In Stats > Look and feel you can pin it to day or night, or follow your own clock.
+- **Motion and feedback:** coins pop out of the Hustle button, the cash counts up and down smoothly and flashes green on a big gain, buying a business throws confetti, level milestones sparkle, and selling a business makes it rain coins. If your device asks for reduced motion (or you pick Calm in Look and feel), none of that moves: numbers just change.
 - **Saving, away earnings and controls** work the same way as in Paper Jam Tycoon.
 
 ## Pacing
@@ -72,6 +74,8 @@ The game ships as one self-contained `index.html`, which is what the published p
 src/page.html            the page markup, with markers where the CSS and JS go
 src/css/style.css        all the styles
 src/js/00-…12-*.js       the core game: data, save, deals, businesses, fix-and-sell, screen, controls
+src/js/11-skyline.js     the skyline and the day/night cycle
+src/js/13-fx.js          motion and feedback (coins, confetti, cash count-up), Look and feel settings
 src/js/20-invest.js      the plug-in point for investments, and the Invest tab
 src/js/30-investments/   one file per investment type (real estate, loans, stocks, bonds,
                          startups, franchising, commodities, partnerships, crypto)
@@ -80,6 +84,8 @@ build.py                 bundles everything back into index.html
 ```
 
 After editing anything in `src/`, run `python3 build.py`, then commit both `src/` and `index.html`. `python3 build.py --check` fails if `index.html` is out of date. All the `.js` files end up in one `<script>` in A-to-Z order, sharing one scope.
+
+**Look of an investment card:** `src/css/style.css` has a "THEME KIT" section with ready-made pieces (title row with a big number, label/value list, progress meter, price chart, holdings list, button row), and `13-fx.js` offers `sparkline(canvas, values)` for charts and `fxBurst(element, "buy" | "sale" | "spark")` for celebrations.
 
 **Adding an investment type:** fill in its file in `src/js/30-investments/` and call `registerInvestment()`. It gets its own card on the Invest tab, its own part of the save, and hooks for earning money over time, events and stats, without editing the core files. `src/js/20-invest.js` documents every hook. Every module lives in its own scope (`(() => { ... })();`), since all files share one `<script>` and two files using the same name would break the whole game.
 
@@ -90,6 +96,7 @@ After editing anything in `src/`, run `python3 build.py`, then commit both `src/
 - `tests/play.py` runs 44 click-through checks and takes screenshots. It also generates 3000 listings to check every name and number.
 - `tests/business.py` runs 51 checks on hidden problems, due diligence, all four mini games, repairs and selling, on a Steam Deck sized screen and a phone.
 - `tests/scouting.py` runs 22 checks on Deal sense: XP, every level's perk, and keeping it through retiring and saving.
+- `tests/look.py` runs 36 checks on the day/night sky, the Look and feel settings, the effects (confetti, coins, cash count-up), calm mode, drawing speed, and the Steam Deck and phone layouts.
 - `tests/invest_host.py` runs 16 checks on the investment plug-in point, using a test investment, including that a broken one can't crash the game.
 - `tests/invest_loans.py` runs 47 checks on loans: the credit limit, interest, on-time and missed payments, the bank taking a business, bankruptcy, paying back, time away and saving.
 - `tests/invest_stocks.py` runs 33 checks on stocks: buying and selling, only profit counting as earned, growth and swings over 600 simulated periods, crashes and buying the dip, time away and saving.
