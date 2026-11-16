@@ -43,6 +43,9 @@ These were real bugs or problems found by the tests or the screenshot review bef
   - Amounts just under a million showed as "$1000K".
   - A buyout offer still paid out for a business you had already sold.
   - The first sale prices let you buy a plain business and sell it straight back at a profit. Sales now go by the business's market price, not its income.
+  - Investing: the first bond rates had a corporate bond beating the index fund, so a safe bond paid better than stocks. Rates were cut so the order is the real one: bonds, then the index fund, then single stocks, then running a business.
+  - Loans: the "next payment" amount wrapped onto three lines on a phone. The due time now has its own small line.
+  - Two shared tests assumed no investments existed: one counted exactly 6 event types, and one expected the Invest tab to be hidden. Both now allow for real investments.
 
 ## What hasn't been tested
 

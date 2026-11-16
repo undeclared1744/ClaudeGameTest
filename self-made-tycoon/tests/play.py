@@ -104,7 +104,10 @@ with sync_playwright() as p:
         document.getElementById('modalBack').classList.remove('on');
         if (!T.state.biz.length) T.state.biz.push({id: 99, ind: 'lawn', name: 'Test Lawn', city: 'Reno', loc: 1, quirk: 0, incMult: 1, level: 1, paid: 25});
         return [...titles]; }""")
-    ok(len(fired) == 6 and not errors, f"all 6 event types fire and both answers work: {fired}")
+    # The 6 core events must all come up. Investment modules can add their
+    # own (e.g. "Buy the dip?"), so extra titles are fine.
+    CORE_EVENTS = {"Buyout offer", "Gone viral", "Surprise inspection", "Partner pitch", "Hot economy", "Lucky break"}
+    ok(CORE_EVENTS <= set(fired) and not errors, f"all 6 core event types fire and both answers work: {fired}")
     ok(S("T.state.cash") >= 0, "events never push cash below zero")
     page.evaluate("() => { T.state.nextEventAt = Date.now() - 1; }"); page.wait_for_timeout(300)
     ok(page.locator("#event").is_visible(), "an event card appears when one is due")
