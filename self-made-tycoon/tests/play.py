@@ -46,7 +46,10 @@ with sync_playwright() as p:
 
     # --- buying a deal ---
     price = S("T.listingPrice(T.state.deals[0])")
-    page.evaluate("() => { T.state.cash = 1000; T.render(true); }")
+    # A listing hiding a problem (1 in 4) pops up a "Surprise!" notice when
+    # you buy it, which covers the tabs and made the next click time out.
+    # Keep this first purchase clean; business.py tests the surprise itself.
+    page.evaluate("() => { T.state.deals[0].hidden = null; T.state.cash = 1000; T.render(true); }")
     name = S("T.state.deals[0].name")
     page.click("#deal-0")
     ok(S("T.state.biz.length") == 1 and S("T.state.biz[0].name") == name, f"buying a deal adds '{name}' to your empire")
