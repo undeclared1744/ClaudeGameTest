@@ -32,6 +32,19 @@ Like a real small-business buyer, you can buy a business with problems cheaply, 
 
 You get better at finding deals the more of them you do. Checking, buying, fixing and selling earn XP, and the XP stays with you when you retire. There are six levels: cheaper due diligence, an extra listing, a "Something feels off" warning on listings that hide a problem, lower asking prices, off-market deals with faster refreshes, and finally free due diligence with one more listing.
 
+## Real estate
+
+The first investment on the Invest tab, open from the second tier (Small business owner). It's one card with one decision at a time: a single property is for sale, and you pass on it, buy it with cash, or buy it with a mortgage (20% down).
+
+- **Rent** comes in every second. Property pays back half as fast as a business of the same size, but it runs itself.
+- **The market** is one number that every rent and value follows. It moves every minute, up about 6% an hour on average, with swings. The card shows the last half hour.
+- **Mortgages** let you own more with the same cash, but the payment stays the same when the market drops. Run out of cash and the bank forecloses on the property losing you the most. Overpaying for a renovated place can make the payment bigger than the rent, and the listing says so.
+- **Condition:** fixer-uppers are cheap and rent for less. Renovating moves a property up a step (Fixer-upper, Dated, Good, Renovated), raising rent and value.
+- **Selling** costs 6% in fees and takes time. If the market crashed and the sale won't cover the loan, it's a short sale and the bank takes the loss.
+- **Tenant's offer:** a tenant may offer above market for the place they rent, with no fees.
+
+Everything is in `src/js/30-investments/real-estate.js`.
+
 ## Other features
 
 - **Expanding** adds levels to a business. Its income doubles at levels 10, 25, 50 and 100.
@@ -83,4 +96,5 @@ After editing anything in `src/`, run `python3 build.py`, then commit both `src/
 - `tests/business.py` runs 51 checks on hidden problems, due diligence, all four mini games, repairs and selling, on a Steam Deck sized screen and a phone.
 - `tests/scouting.py` runs 22 checks on Deal sense: XP, every level's perk, and keeping it through retiring and saving.
 - `tests/invest_host.py` runs 18 checks on the investment plug-in point, using a test investment, including that a broken one can't crash the game.
+- `tests/invest_real_estate.py` runs 64 checks on real estate: buying, mortgages (against a step-by-step check), 8 hours away, foreclosure, renovating, selling, a short sale, the market, the tenant's offer, damaged saves, and the card on a phone.
 - `tests/sim.py` has a robot play 4 hours, both active and idle, and reports the pacing.
