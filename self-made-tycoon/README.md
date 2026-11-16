@@ -42,6 +42,15 @@ You get better at finding deals the more of them you do. Checking, buying, fixin
 - **Your skyline:** a night skyline grows with one building for each business you own.
 - **Saving, away earnings and controls** work the same way as in Paper Jam Tycoon.
 
+## Commodities and crypto (Invest tab)
+
+Both open at the Main Street tier. Neither pays income: you make money only by buying low and selling high, which is the real lesson. Each market is one row with one decision, Buy or Sell, and a small 20-minute price chart.
+
+- **Commodities:** gold barely moves, creeps up slowly, and jumps when bad news hits oil or grain. Oil rises in a hot economy and on supply news. Grain follows the seasons (one "year" per real hour) and weather news. News spikes fade over 15 to 30 minutes. Trades cost 1%, and you can hold up to about an hour of your business income.
+- **Crypto:** three made-up coins. Blockbarn is the big one, a mid-size coin swings harder and can be rug-pulled, and a joke coin can 20x but usually goes to zero. When a coin dies, a new one lists in its place. About once every 10 hours the whole market crashes. Trades cost 2.5%, and you can put in up to about 30 minutes of your business income.
+- **Events:** a drought warning, an oil supply cut, market jitters, a coin "trending" (usually a trap), and a Blockbarn halving. Each tells you roughly how often the forecast comes true.
+- **Can't be farmed:** only the profit part of a sale counts toward unlocks and Legacy stars, and losses never take earnings away. Prices don't compound, the fees eat quick flipping, and the limits keep both a side bet next to your businesses. Holding a joke coin for 8 hours keeps about 40 to 50% of its value on average, and the typical one ends near zero. Prices come from a seeded random generator kept in the save, so reloading can't re-roll a crash.
+
 ## Pacing
 
 These are the robot's times when it taps 3 times a second. A person will be slower.
@@ -83,4 +92,6 @@ After editing anything in `src/`, run `python3 build.py`, then commit both `src/
 - `tests/business.py` runs 51 checks on hidden problems, due diligence, all four mini games, repairs and selling, on a Steam Deck sized screen and a phone.
 - `tests/scouting.py` runs 22 checks on Deal sense: XP, every level's perk, and keeping it through retiring and saving.
 - `tests/invest_host.py` runs 18 checks on the investment plug-in point, using a test investment, including that a broken one can't crash the game.
+- `tests/invest_commodities.py` runs 37 checks on gold, oil and grain: fees, the limit, profit-only earnings, 8 hours away, news events, bad saves, and a 200-market balance check.
+- `tests/invest_crypto.py` runs 34 checks on crypto: made-up names, fees, the limit, rug pulls, bubbles, hype events, bad saves (including HTML in coin names), and a 400-market check that coins lose money on average.
 - `tests/sim.py` has a robot play 4 hours, both active and idle, and reports the pacing.
