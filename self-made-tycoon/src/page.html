@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Self-Made Tycoon</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/*@@CSS@@*/</style>
+</head>
+<body>
+<div class="app">
+  <!-- ================= LEFT: THE TERMINAL ================= -->
+  <section class="terminal" aria-label="You">
+    <div class="brand">
+      <div>
+        <h1 class="cond">Self-Made Tycoon</h1>
+        <div class="rank" id="rank">SIDE HUSTLER</div>
+      </div>
+      <span class="save-state" id="saveState">Saving on this device</span>
+    </div>
+    <div class="ticker">
+      <div class="cash" id="cash">$0</div>
+      <div class="rates">
+        <span id="ips">$0/sec</span>
+        <span id="tapv">$1 per hustle</span>
+        <span id="owned">0 businesses</span>
+        <span class="boom" id="boom"></span>
+      </div>
+    </div>
+    <div class="sky">
+      <canvas id="skyline" aria-hidden="true"></canvas>
+      <div class="event" id="event" hidden role="region" aria-label="Something happened">
+        <h2 class="cond" id="evTitle"></h2>
+        <p id="evText"></p>
+        <div class="opts" id="evOpts"></div>
+      </div>
+    </div>
+    <div class="job">
+      <div id="jobText">Mowing a lawn</div>
+      <div class="bar"><i id="jobBar"></i></div>
+    </div>
+    <button class="hustle cond" id="hustle">Hustle <small id="hustleSub">Tap to earn money yourself</small></button>
+    <div class="padhints" id="padHints">A press · X hustle · B take the offer · LB/RB tabs · Y buy amount</div>
+    <div class="floats" id="floats"></div>
+  </section>
+
+  <!-- ================= RIGHT: THE LEDGER ================= -->
+  <section class="ledger">
+    <div class="tabs" role="tablist">
+      <button class="tab cond" role="tab" id="tab-deals" data-pane="deals" aria-selected="true">Deals<span class="badge" id="dealBadge" hidden>0</span></button>
+      <button class="tab cond" role="tab" id="tab-empire" data-pane="empire" aria-selected="false">Empire</button>
+      <button class="tab cond" role="tab" id="tab-invest" data-pane="invest" aria-selected="false" hidden>Invest</button>
+      <button class="tab cond" role="tab" id="tab-upg" data-pane="upg" aria-selected="false">Upgrades<span class="badge" id="upgBadge" hidden>0</span></button>
+      <button class="tab cond" role="tab" id="tab-retire" data-pane="retire" aria-selected="false">Retire</button>
+      <button class="tab cond" role="tab" id="tab-set" data-pane="set" aria-selected="false">Stats</button>
+      <div class="buymode" id="buymode" aria-label="How many levels to expand at once">
+        Expand
+        <button id="bm1" data-mode="1" aria-pressed="true">x1</button>
+        <button id="bm10" data-mode="10" aria-pressed="false">x10</button>
+        <button id="bmmax" data-mode="max" aria-pressed="false">Max</button>
+      </div>
+    </div>
+
+    <div class="pane on" id="pane-deals">
+      <div class="sense" id="sense">
+        <div class="sense-top"><strong class="cond" id="senseName">Deal sense: Rookie</strong><span id="senseXp"></span></div>
+        <div class="bar"><i id="senseBar"></i></div>
+        <div class="note" id="senseNext"></div>
+      </div>
+      <div class="pane-head">
+        <span class="grow" id="dealsTimer">New listings soon</span>
+        <button class="smallbtn" id="scout">Scout new deals</button>
+      </div>
+      <div id="dealList" style="display:grid; gap:10px"></div>
+      <p class="note" id="nextTier"></p>
+    </div>
+    <div class="pane" id="pane-empire">
+      <div class="pane-head"><span class="grow" id="empireSummary"></span></div>
+      <div id="empireList" style="display:grid; gap:10px"></div>
+    </div>
+    <div class="pane" id="pane-invest">
+      <div id="investList" style="display:grid; gap:10px"></div>
+    </div>
+    <div class="pane" id="pane-upg"></div>
+    <div class="pane" id="pane-retire">
+      <div class="card">
+        <h2 class="cond">Retire and start again</h2>
+        <p>Sell everything, hand the keys to a successor, and start over with nothing but your name. Every Legacy star makes all your income and hustling <strong id="legPct">10%</strong> bigger, forever.</p>
+        <p>Stars come from everything you have ever earned. You have <strong id="legNow">0</strong> stars. Retiring now adds <strong id="legGain">0</strong>. Your Deal sense comes with you too.</p>
+        <p class="note" id="legNext"></p>
+        <button class="bigbtn go cond" id="retire" aria-disabled="true">Not worth retiring yet</button>
+      </div>
+    </div>
+    <div class="pane" id="pane-set">
+      <div class="card"><h2 class="cond">Stats</h2><dl class="stats" id="stats"></dl></div>
+      <div class="card">
+        <h2 class="cond">Your save</h2>
+        <p>The game saves itself every 30 seconds and when you leave.</p>
+        <button class="bigbtn cond" id="copySave">Copy save code</button>
+        <label for="importBox">Paste a save code to load it:</label>
+        <textarea id="importBox" spellcheck="false"></textarea>
+        <button class="bigbtn cond" id="importSave">Load pasted save</button>
+      </div>
+      <div class="card">
+        <h2 class="cond">Start over</h2>
+        <p>Wipes everything, Legacy stars and Deal sense included. This cannot be undone.</p>
+        <button class="bigbtn danger cond" id="wipe">Wipe my save</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="modal-back" id="modalBack">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <h2 class="cond" id="modalTitle">While you were out</h2>
+    <p id="modalText"></p>
+    <div class="amount" id="modalAmount"></div>
+    <button class="bigbtn go cond" id="modalOk">Back to work</button>
+  </div>
+</div>
+<div class="modal-back" id="sheetBack">
+  <div class="modal sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+    <h2 class="cond" id="sheetTitle"></h2>
+    <div id="sheetBody"></div>
+    <button class="bigbtn cond" id="sheetClose">Close</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/*@@JS@@*/</script>
+</body>
+</html>

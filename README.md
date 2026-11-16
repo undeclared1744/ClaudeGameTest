@@ -10,7 +10,7 @@ The repo keeps every game plus the automated tests Claude wrote for it, so the c
 |---|---|---|---|
 | [Emberdeep](emberdeep/) | Deck-building dungeon crawl: 9 floors, 18 cards, 8 enemies, a boss | Steam Deck, Linux PC | Python + pygame |
 | [Paper Jam Tycoon](paper-jam-tycoon/) | Incremental game: clear copier jams, hire techs, grow a print-service empire | Any web browser (Deck, phone, PC) | One HTML file |
-| [Self-Made Tycoon](self-made-tycoon/) | Business tycoon: start with nothing, buy randomly generated real-world businesses, work up to an airline | Any web browser (Deck, phone, PC) | One HTML file |
+| [Self-Made Tycoon](self-made-tycoon/) | Business tycoon: start with nothing, buy randomly generated real-world businesses, fix them up and flip them, work up to an airline | Any web browser (Deck, phone, PC) | One HTML file |
 
 | Emberdeep | Paper Jam Tycoon | Self-Made Tycoon |
 |---|---|---|
@@ -38,6 +38,11 @@ These were real bugs or problems found by the tests or the screenshot review bef
 - **Self-Made Tycoon:**
   - The first balance pass let the robot reach the top tier in 14 minutes instead of a few hours. Every business you bought started its own cheap upgrade ladder, so prices now rise with your total levels in each industry.
   - Late in a run, the deals board filled with industries you had already grown huge, which cost billions and took months to pay back. The board now favours industries you own little of.
+  - Two click-through checks failed about 1 run in 3. A random buyout event could sell the only test business, and the "corrupted save" check never loaded a broken save, because the game saved a good copy over it as the page closed.
+  - Loading a save never repaired broken numbers such as negative cash. The repair step compared each value against itself.
+  - Amounts just under a million showed as "$1000K".
+  - A buyout offer still paid out for a business you had already sold.
+  - The first sale prices let you buy a plain business and sell it straight back at a profit. Sales now go by the business's market price, not its income.
 
 ## What hasn't been tested
 
@@ -64,6 +69,7 @@ pip install playwright && python3 -m playwright install chromium
 cd self-made-tycoon                 # or paper-jam-tycoon
 python3 tests/play.py               # click-through feature checks + screenshots
 python3 tests/sim.py                # robot plays hours of game time and reports the pacing
+tests/run_all.sh                    # Self-Made Tycoon only: check the build and run every test
 ```
 
 Set `CHROME_PATH` if you want the tests to use an installed Chrome instead of Playwright's own browser.
@@ -73,6 +79,6 @@ Set `CHROME_PATH` if you want the tests to use an installed Chrome instead of Pl
 ```
 emberdeep/            Python game: game/data.py (cards, enemies), combat.py (rules), ui.py (screen and input)
 paper-jam-tycoon/     index.html (the whole game) + tests/
-self-made-tycoon/     index.html (the whole game) + tests/
+self-made-tycoon/     index.html (built from src/ by build.py) + src/ + tests/
 screenshots/          one picture of each game
 ```

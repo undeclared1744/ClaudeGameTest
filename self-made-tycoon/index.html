@@ -160,6 +160,8 @@ textarea { width: 100%; min-height: 80px; font: 13px var(--mono); border-radius:
 .gauge .zone { position: absolute; top: 0; bottom: 0; background: #7cc79a; }
 .gauge .needle { position: absolute; top: 0; bottom: 0; width: 4px; margin-left: -2px; background: var(--ink); }
 .gstat { font: 14px var(--mono); }
+/* investment cards on the Invest tab (each module draws its own inside) */
+.card.inv { gap: 8px; }
 .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--night); color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 15px; z-index: 11; opacity: 0; transition: opacity .25s; pointer-events: none; max-width: 90vw; text-align: center; }
 .toast.on { opacity: 1; }
 
@@ -229,6 +231,7 @@ textarea { width: 100%; min-height: 80px; font: 13px var(--mono); border-radius:
     <div class="tabs" role="tablist">
       <button class="tab cond" role="tab" id="tab-deals" data-pane="deals" aria-selected="true">Deals<span class="badge" id="dealBadge" hidden>0</span></button>
       <button class="tab cond" role="tab" id="tab-empire" data-pane="empire" aria-selected="false">Empire</button>
+      <button class="tab cond" role="tab" id="tab-invest" data-pane="invest" aria-selected="false" hidden>Invest</button>
       <button class="tab cond" role="tab" id="tab-upg" data-pane="upg" aria-selected="false">Upgrades<span class="badge" id="upgBadge" hidden>0</span></button>
       <button class="tab cond" role="tab" id="tab-retire" data-pane="retire" aria-selected="false">Retire</button>
       <button class="tab cond" role="tab" id="tab-set" data-pane="set" aria-selected="false">Stats</button>
@@ -256,6 +259,9 @@ textarea { width: 100%; min-height: 80px; font: 13px var(--mono); border-radius:
     <div class="pane" id="pane-empire">
       <div class="pane-head"><span class="grow" id="empireSummary"></span></div>
       <div id="empireList" style="display:grid; gap:10px"></div>
+    </div>
+    <div class="pane" id="pane-invest">
+      <div id="investList" style="display:grid; gap:10px"></div>
     </div>
     <div class="pane" id="pane-upg"></div>
     <div class="pane" id="pane-retire">
@@ -313,17 +319,26 @@ textarea { width: 100%; min-height: 80px; font: 13px var(--mono); border-radius:
    generated on the spot: a real kind of business with a made-up name,
    a city, a location rating and a quirk, so no two runs look the same.
 
-   HOW THIS FILE IS ORGANISED
-     1. GAME DATA       - industries, name parts, quirks, upgrades, numbers
-     2. GAME STATE      - the one object that IS your save
-     3. MATH            - income, prices, legacy stars
-     4. DEAL GENERATOR  - makes the businesses for sale
-     5. ACTIONS         - hustle, buy, expand, events, retire
-     6. TIME            - the main loop and away-from-game earnings
-     7. SAVING          - this browser + your Claude account (syncs devices)
-     8. SCREEN          - numbers, lists, the skyline
-     9. CONTROLS        - touch/mouse, keyboard, game controller
-    10. START UP
+   HOW THE CODE IS ORGANISED
+   This page is built from the files in src/ by build.py (edit those, not
+   index.html). All the .js files below end up in this one <script>, in
+   this order, sharing one scope:
+     00-intro.js        - this overview
+     01-data.js         - industries, name parts, quirks, problems, Deal sense levels, upgrades
+     02-state.js        - the one object that IS your save
+     03-math.js         - income, prices, legacy stars, Deal sense
+     04-deals.js        - the deal generator (businesses for sale)
+     05-actions.js      - hustle, buy, expand, upgrades, events, retire
+     06-fixsell.js      - due diligence, fixing problems, selling businesses
+     07-time.js         - the main loop and away-from-game earnings
+     08-save.js         - this browser + your Claude account (syncs devices)
+     09-screen.js       - numbers, the Deals / Empire / Upgrades / Retire / Stats tabs
+     10-sheet.js        - the Manage sheet for one business, and the fix-up mini games
+     11-skyline.js      - the night skyline drawing
+     12-controls.js     - touch/mouse, keyboard, game controller
+     20-invest.js       - the plug-in point for every investment type, and the Invest tab
+     30-investments/    - one file per investment type (real estate, stocks, ...)
+     99-start.js        - start up, and handles for the automated tests
    ===================================================================== */
 
 
@@ -609,6 +624,7 @@ function freshState(keepLegacy = 0, keepEarnedAll = 0, keepStats = {}, keepScout
     dealsRefreshAt: 0,          // when the board refreshes by itself
     scoutReadyAt: 0,            // when "Scout new deals" can be pressed again
     upgrades: {},               // { upgradeId: true }
+    inv: {},                    // each investment module's own state, by id (see 20-invest.js)
     jobStep: 0, gig: 0,         // progress on the current hustle job
     nextEventAt: now + 60e3,    // first event comes after a minute
     boomUntil: 0,               // "hot economy" event: everything pays more until then
@@ -970,6 +986,7 @@ function makeEvent() {
       options: [{ label: `Ride it: ${BOOM_MULT}x for ${BOOM_SECONDS}s`, yes: true, act: () => {
         state.boomUntil = Math.max(state.boomUntil, Date.now()) + BOOM_SECONDS * 1000; } }] }));
   }
+  types.push(...investEvents());  // events from the investment modules
   types.push(() => {             // free money (always possible, even with no businesses)
     const pay = Math.max(tapValue() * 40, inc * 120);
     return { title: "Lucky break", text: "A customer you helped years ago sends a thank-you check.",
@@ -1182,6 +1199,7 @@ function earnBetween(from, to) {
   boomExtra = baseIncome() * (BOOM_MULT - 1) * overlap(from, to, state.boomUntil);
   total += boomExtra;
   addCash(total);
+  total += investEarn(seconds);        // rent, interest, dividends... (see 20-invest.js)
   return total;
 }
 
@@ -1195,6 +1213,7 @@ function catchUp(showMessage) {
   // Work and sales that finished while you were away. (Income while away
   // was counted at the old rate, before the fix: a little on the safe side.)
   finishProjects(now);
+  investTick(now);
   if (state.nextEventAt < now) state.nextEventAt = now + 20e3;
   if (now >= state.dealsRefreshAt) refreshDeals();
   if (showMessage && away > 60e3 && earned > 0) {
@@ -1213,6 +1232,7 @@ function frame(nowPerf) {
   else if (gap > 0) { earnBetween(state.lastTick, now); state.lastTick = now; }
   if (now >= state.dealsRefreshAt) refreshDeals();
   finishProjects(now);
+  investTick(now);
   updateEvent(now);
   render(false);
   if (nowPerf - lastSlowRender > 250) { lastSlowRender = nowPerf; render(true); }
@@ -1266,6 +1286,7 @@ function validState(s) {
   out.nextBizId = Math.max(Number(s.nextBizId) || 1, ...out.biz.map(b => b.id + 1), 1);
   out.deals = Array.isArray(s.deals) ? s.deals.filter(l => l && IND[l.ind] && Number.isFinite(l.priceMult) && Number.isFinite(l.incMult))
     .map(l => Object.assign({}, l, { hidden: PROBLEMS[l.hidden]?.hidden ? l.hidden : null, checked: !!l.checked, offMarket: !!l.offMarket })) : [];
+  out.inv = validInvestments(s.inv);
   out.upgrades = {};
   for (const id in (s.upgrades || {})) if (UPG[id]) out.upgrades[id] = true;
   for (const k of ["cash", "earnedRun", "earnedAll", "legacy", "scoutXp", "savedAt", "lastTick", "nextEventAt", "boomUntil", "dealsRefreshAt", "scoutReadyAt"]) {
@@ -1558,6 +1579,7 @@ function updateStats() {
     ["Businesses bought", state.stats.bought], ["Businesses sold", state.stats.sold],
     ["Profit from selling", money(state.stats.flipProfit)], ["Problems fixed", state.stats.fixes], ["Due diligence checks", state.stats.checks],
     ["Events answered", state.stats.events], ["Times retired", state.stats.retires],
+    ...investStats(),
     ["Playing since", new Date(state.stats.startedAt).toLocaleDateString()],
   ];
   $("stats").innerHTML = items.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
@@ -1566,7 +1588,7 @@ function updateStats() {
 function render(full) {
   const now = Date.now();
   $("cash").textContent = money(state.cash);
-  $("ips").textContent = money(incomeNow(now)) + "/sec";
+  $("ips").textContent = money(incomeNow(now) + investNet()) + "/sec";
   $("tapv").textContent = money(tapValue()) + " per hustle";
   $("owned").textContent = state.biz.length + (state.biz.length === 1 ? " business" : " businesses");
   const boom = Math.ceil((state.boomUntil - now) / 1000);
@@ -1577,6 +1599,7 @@ function render(full) {
   $("jobBar").style.width = (state.jobStep / STEPS_PER_JOB * 100) + "%";
   if (activeEvent) $("evLeft") && ($("evLeft").textContent = `${Math.ceil(EVENT_VISIBLE - (now - eventShownAt) / 1000)}s`);
   for (const b of document.querySelectorAll("#buymode button")) b.setAttribute("aria-pressed", String(b.dataset.mode === state.buyMode));
+  updateInvest(full);
   if (!full) return;
   updateDeals();
   updateEmpire();
@@ -1585,7 +1608,7 @@ function render(full) {
   if ($("pane-set").classList.contains("on")) updateStats();
   renderSheet(false);
 }
-function rebuildLists() { dealsKey = empireKey = upgradeKey = ""; render(true); }
+function rebuildLists() { dealsKey = empireKey = upgradeKey = investKey = ""; render(true); }
 
 function showEvent() {
   const ev = activeEvent;
@@ -1941,7 +1964,7 @@ function drawSkyline(dt) {
 /* =====================================================================
    9. CONTROLS
    Keyboard: Space = hustle, arrows = move between buttons, Enter = press,
-             1-5 = tabs, O = take the offer (first event choice).
+             1-6 = tabs, O = take the offer (first event choice).
    Controller: A = press, X = hustle, B = take the offer, LB/RB = tabs,
                Y = expand amount, D-pad/left stick = move between buttons.
    ===================================================================== */
@@ -1958,16 +1981,19 @@ $("sheetClose").addEventListener("click", closeSheet);
 $("sheetBack").addEventListener("click", e => { if (e.target === $("sheetBack")) closeSheet(); });   // tap outside the card
 $("scout").addEventListener("click", scoutDeals);
 
-const TAB_ORDER = ["deals", "empire", "upg", "retire", "set"];
+// The tabs, in screen order. Hidden tabs (the Invest tab before any
+// investment exists) are skipped by LB/RB and the number keys.
+const tabOrder = () => [...document.querySelectorAll(".tab")].filter(t => !t.hidden).map(t => t.dataset.pane);
 function showTab(name) {
   for (const tab of document.querySelectorAll(".tab")) tab.setAttribute("aria-selected", String(tab.dataset.pane === name));
-  for (const id of TAB_ORDER) $("pane-" + id).classList.toggle("on", id === name);
+  for (const pane of document.querySelectorAll(".pane")) pane.classList.toggle("on", pane.id === "pane-" + name);
   render(true);
 }
 for (const tab of document.querySelectorAll(".tab")) tab.addEventListener("click", () => showTab(tab.dataset.pane));
 const cycleTab = step => {
-  const i = TAB_ORDER.findIndex(id => $("pane-" + id).classList.contains("on"));
-  showTab(TAB_ORDER[(i + step + TAB_ORDER.length) % TAB_ORDER.length]);
+  const order = tabOrder();
+  const i = order.findIndex(id => $("pane-" + id).classList.contains("on"));
+  showTab(order[(i + step + order.length) % order.length]);
 };
 function setBuyMode(mode) { state.buyMode = mode; render(true); }
 for (const b of document.querySelectorAll("#buymode button")) b.addEventListener("click", () => setBuyMode(b.dataset.mode));
@@ -2021,7 +2047,7 @@ document.addEventListener("keydown", e => {
   if (map[e.key]) { e.preventDefault(); moveFocus(map[e.key]); return; }
   if (e.key === " " && document.activeElement?.tagName !== "BUTTON") { e.preventDefault(); hustle(); return; }
   if (e.key === "o" || e.key === "O") chooseEvent(0);
-  if (e.key >= "1" && e.key <= "5") showTab(TAB_ORDER[Number(e.key) - 1]);
+  if (/^[1-9]$/.test(e.key) && tabOrder()[Number(e.key) - 1]) showTab(tabOrder()[Number(e.key) - 1]);
 });
 
 // Move focus to the nearest visible button in a direction
@@ -2085,6 +2111,309 @@ function pollGamepads() {
 }
 
 
+
+
+/* =====================================================================
+   20. INVESTMENTS: the plug-in point for every other way to make money
+   (real estate, loans, stocks, bonds, startups, franchising,
+   commodities, partnerships, crypto).
+
+   Each kind of investment lives in its own file in 30-investments/ and
+   calls registerInvestment() once. It then gets its own card on the
+   Invest tab, its own slice of the save, and a say in the main loop,
+   all without editing the core files. That's what lets several people
+   build different investments at the same time.
+
+   A module is an object like this (every field but id/name is optional):
+
+   registerInvestment({
+     id: "bonds",                 // unique, used as the save key: state.inv.bonds
+     name: "Bonds and CDs",       // heading on its Invest card
+     order: 30,                   // cards are shown smallest order first
+     unlockTier: 1,               // card is locked until this tier (see TIERS)
+     fresh: () => ({ holdings: [] }),        // a new player's state for this module
+     validate: saved => ({ ... }),           // clean up a loaded save: never trust
+                                             // it, return a fresh-looking object.
+                                             // If it throws, fresh() is used.
+     earn(seconds) { ... },       // money in / out for a stretch of time (also
+                                  // covers long times away, up to 8 hours in
+                                  // one call). Use addCash() for income that
+                                  // should count as earnings, or change
+                                  // state.cash directly for spending. Return the
+                                  // net amount for the "while you were out" total.
+     tick(now) { ... },           // every frame and after time away: finish
+                                  // timers, check for trouble, etc.
+     netIncome: () => 0,          // $/sec it adds right now (shown in the ticker)
+     render(card, full) { ... },  // draw into its card. full = false is every
+                                  // frame (update numbers only), true is ~4x a
+                                  // second and after actions (rebuild if needed).
+     events: () => [ () => ({ title, text, options: [...] }) ],
+                                  // extra pop-up events, same shape as makeEvent()
+     stats: () => [["Bonds owned", 3]],      // extra rows on the Stats tab
+     test: { ... },               // handles for automated tests: T.invTests.bonds
+   });
+
+   Read and change a module's state with inv("bonds"). It's created from
+   fresh() the first time, so it's always there. Retiring and wiping the
+   save start every module over from fresh().
+   ===================================================================== */
+const MODULES = [];
+function registerInvestment(m) {
+  if (!m || !m.id || MODULES.some(x => x.id === m.id)) throw new Error("registerInvestment: missing or duplicate id " + (m && m.id));
+  MODULES.push(m);
+  MODULES.sort((a, b) => (a.order ?? 50) - (b.order ?? 50));
+}
+// A module's slice of the save (created on first use)
+function inv(id) {
+  if (!state.inv) state.inv = {};
+  if (!state.inv[id]) {
+    const m = MODULES.find(x => x.id === id);
+    state.inv[id] = m && m.fresh ? m.fresh() : {};
+  }
+  return state.inv[id];
+}
+// Clean up every module's part of a loaded save (called from validState)
+function validInvestments(saved) {
+  const out = {};
+  for (const m of MODULES) {
+    const raw = saved && typeof saved === "object" ? saved[m.id] : undefined;
+    try { out[m.id] = raw === undefined ? (m.fresh ? m.fresh() : {}) : (m.validate ? m.validate(raw) : raw); }
+    catch { out[m.id] = m.fresh ? m.fresh() : {}; }
+  }
+  return out;
+}
+const investUnlocked = m => tierUnlocked() >= (m.unlockTier || 0);
+// Main-loop hooks. A broken module must never stop the game, so each call
+// is wrapped: an error is logged once and that module is skipped.
+const moduleErrors = new Set();
+function safely(m, fn) {
+  try { fn(m); }
+  catch (err) { if (!moduleErrors.has(m.id)) { moduleErrors.add(m.id); console.error(`Investment "${m.id}" failed:`, err); } }
+}
+const eachModule = fn => { for (const m of MODULES) safely(m, fn); };
+function investEarn(seconds) {
+  let total = 0;
+  if (seconds > 0) eachModule(m => { if (m.earn) total += Number(m.earn(seconds)) || 0; });
+  return total;
+}
+function investTick(now) { eachModule(m => m.tick && m.tick(now)); }
+function investNet() { let t = 0; eachModule(m => { if (m.netIncome) t += Number(m.netIncome()) || 0; }); return t; }
+function investEvents() { const out = []; eachModule(m => { if (m.events && investUnlocked(m)) out.push(...m.events()); }); return out; }
+function investStats() { const out = []; eachModule(m => { if (m.stats) out.push(...m.stats()); }); return out; }
+
+// The Invest tab: one card per module. The tab only shows up once at
+// least one module is registered.
+let investKey = "";
+function updateInvest(full) {
+  $("tab-invest").hidden = MODULES.length === 0;
+  if (!MODULES.length) return;
+  const box = $("investList");
+  const key = MODULES.map(m => m.id + ":" + investUnlocked(m)).join(",");
+  if (key !== investKey) {
+    investKey = key;
+    box.innerHTML = "";
+    for (const m of MODULES) {
+      const card = document.createElement("section");
+      card.className = "card inv";
+      card.id = "inv-" + m.id;
+      card.dataset.id = m.id;
+      if (!investUnlocked(m)) {
+        card.innerHTML = `<h2 class="cond">${esc(m.name)}</h2><p class="note">Opens up once you've earned ${money(TIERS[m.unlockTier].unlock)} this run.</p>`;
+      }
+      box.appendChild(card);
+    }
+    full = true;
+  }
+  if (!$("pane-invest").classList.contains("on")) return;     // only draw what you can see
+  for (const card of box.children) {
+    const m = MODULES.find(x => x.id === card.dataset.id);
+    if (m && m.render && investUnlocked(m)) safely(m, () => m.render(card, full));
+  }
+}
+
+/* =====================================================================
+   INVESTMENT: BONDS AND CDS  (not built yet)
+   Planned: Safe and low return. Money is locked up until the bond matures.
+
+   To build it, replace this comment's "not built yet" and call
+   registerInvestment() (see 20-invest.js for every hook), for example:
+
+     registerInvestment({
+       id: "bonds", name: "Bonds and CDs", order: 40, unlockTier: 1,
+       fresh: () => ({ }),
+       validate: saved => ({ }),
+       earn(seconds) { return 0; },
+       render(card, full) { },
+     });
+
+   Keep everything for this investment in this file. Its tests go in
+   tests/invest_bonds.py and run on the built index.html.
+   ===================================================================== */
+
+/* =====================================================================
+   INVESTMENT: COMMODITIES  (not built yet)
+   Planned: Gold steadies your portfolio, while oil and grain swing with news events.
+
+   To build it, replace this comment's "not built yet" and call
+   registerInvestment() (see 20-invest.js for every hook), for example:
+
+     registerInvestment({
+       id: "commodities", name: "Commodities", order: 70, unlockTier: 2,
+       fresh: () => ({ }),
+       validate: saved => ({ }),
+       earn(seconds) { return 0; },
+       render(card, full) { },
+     });
+
+   Keep everything for this investment in this file. Its tests go in
+   tests/invest_commodities.py and run on the built index.html.
+   ===================================================================== */
+
+/* =====================================================================
+   INVESTMENT: CRYPTO  (not built yet)
+   Planned: Wild swings and pure speculation. Heber asked to keep it in.
+
+   To build it, replace this comment's "not built yet" and call
+   registerInvestment() (see 20-invest.js for every hook), for example:
+
+     registerInvestment({
+       id: "crypto", name: "Crypto", order: 90, unlockTier: 2,
+       fresh: () => ({ }),
+       validate: saved => ({ }),
+       earn(seconds) { return 0; },
+       render(card, full) { },
+     });
+
+   Keep everything for this investment in this file. Its tests go in
+   tests/invest_crypto.py and run on the built index.html.
+   ===================================================================== */
+
+/* =====================================================================
+   INVESTMENT: FRANCHISING  (not built yet)
+   Planned: Turn a business that's doing well into a franchise brand, then earn
+   royalties as franchisees open locations.
+
+   To build it, replace this comment's "not built yet" and call
+   registerInvestment() (see 20-invest.js for every hook), for example:
+
+     registerInvestment({
+       id: "franchising", name: "Franchising", order: 60, unlockTier: 2,
+       fresh: () => ({ }),
+       validate: saved => ({ }),
+       earn(seconds) { return 0; },
+       render(card, full) { },
+     });
+
+   Keep everything for this investment in this file. Its tests go in
+   tests/invest_franchising.py and run on the built index.html.
+   ===================================================================== */
+
+/* =====================================================================
+   INVESTMENT: BANK LOANS AND LEVERAGE  (not built yet)
+   Planned: Borrow against your businesses, with interest due every so often. Miss
+   a payment and the bank takes a business.
+
+   To build it, replace this comment's "not built yet" and call
+   registerInvestment() (see 20-invest.js for every hook), for example:
+
+     registerInvestment({
+       id: "loans", name: "Bank loans and leverage", order: 20, unlockTier: 1,
+       fresh: () => ({ }),
+       validate: saved => ({ }),
+       earn(seconds) { return 0; },
+       render(card, full) { },
+     });
+
+   Keep everything for this investment in this file. Its tests go in
+   tests/invest_loans.py and run on the built index.html.
+   ===================================================================== */
+
+/* =====================================================================
+   INVESTMENT: PARTNERSHIPS AND PRIVATE EQUITY  (not built yet)
+   Planned: Buy a share of a big company with partners, help grow it, and cash out
+   when it sells.
+
+   To build it, replace this comment's "not built yet" and call
+   registerInvestment() (see 20-invest.js for every hook), for example:
+
+     registerInvestment({
+       id: "partnerships", name: "Partnerships and private equity", order: 80, unlockTier: 3,
+       fresh: () => ({ }),
+       validate: saved => ({ }),
+       earn(seconds) { return 0; },
+       render(card, full) { },
+     });
+
+   Keep everything for this investment in this file. Its tests go in
+   tests/invest_partnerships.py and run on the built index.html.
+   ===================================================================== */
+
+/* =====================================================================
+   INVESTMENT: REAL ESTATE  (not built yet)
+   Planned: Buy property for rent. Pay cash or take a mortgage (20% down, a fixed
+   payment per second that pays interest plus some of the loan). A
+   property market number that rents and values follow, drifting up with
+   swings. Fixer-upper / Dated / Good / Renovated condition; renovate to
+   raise rent and value, then sell (6% fees, takes time). Foreclosure if
+   cash runs out with payments due. A "tenant's offer" event.
+   A half-built version written before the split is in the project files:
+   self-made-tycoon/real-estate-wip.patch (+ its tests). It was written
+   straight into the old single file, so port it into this module.
+
+   To build it, replace this comment's "not built yet" and call
+   registerInvestment() (see 20-invest.js for every hook), for example:
+
+     registerInvestment({
+       id: "real-estate", name: "Real estate", order: 10, unlockTier: 1,
+       fresh: () => ({ }),
+       validate: saved => ({ }),
+       earn(seconds) { return 0; },
+       render(card, full) { },
+     });
+
+   Keep everything for this investment in this file. Its tests go in
+   tests/invest_real_estate.py and run on the built index.html.
+   ===================================================================== */
+
+/* =====================================================================
+   INVESTMENT: ANGEL AND STARTUP STAKES  (not built yet)
+   Planned: Fund a made-up startup pitch. Most fail and a rare one pays 50x or more.
+   Due diligence first improves your odds.
+
+   To build it, replace this comment's "not built yet" and call
+   registerInvestment() (see 20-invest.js for every hook), for example:
+
+     registerInvestment({
+       id: "startups", name: "Angel and startup stakes", order: 50, unlockTier: 2,
+       fresh: () => ({ }),
+       validate: saved => ({ }),
+       earn(seconds) { return 0; },
+       render(card, full) { },
+     });
+
+   Keep everything for this investment in this file. Its tests go in
+   tests/invest_startups.py and run on the built index.html.
+   ===================================================================== */
+
+/* =====================================================================
+   INVESTMENT: STOCK MARKET  (not built yet)
+   Planned: An index fund that grows slowly, plus a few made-up company stocks whose
+   prices swing.
+
+   To build it, replace this comment's "not built yet" and call
+   registerInvestment() (see 20-invest.js for every hook), for example:
+
+     registerInvestment({
+       id: "stocks", name: "Stock market", order: 30, unlockTier: 2,
+       fresh: () => ({ }),
+       validate: saved => ({ }),
+       earn(seconds) { return 0; },
+       render(card, full) { },
+     });
+
+   Keep everything for this investment in this file. Its tests go in
+   tests/invest_stocks.py and run on the built index.html.
+   ===================================================================== */
 /* =====================================================================
    10. START UP
    ===================================================================== */
@@ -2113,7 +2442,10 @@ window.T = { get state() { return state; }, set state(s) { state = s; }, INDUSTR
   baseIncome, bizIncome, incomeNow, tapValue, listingPrice, listingIncome, expandCost, maxExpand, legacyGain, retire, earnBetween, upgradeAvailable,
   validState, encodeSave, decodeSave, catchUp, render, rebuildLists, refreshDeals, makeListing, makeEvent, chooseEvent, saveNow, short,
   tierUnlocked, sectorLevels, problemsOf, saleValue, fixCost, checkListing, startFix, finishProjects, listForSale, cancelSale, openSheet, closeSheet,
-  tryFix, PROBLEMS, QUIRKS, LOCS: LOCATIONS, SCOUT_LEVELS, scoutLevel, gainScoutXp, ddCost, get activeEvent() { return activeEvent; }, set activeEvent(e) { activeEvent = e; }, showEvent };
+  tryFix, PROBLEMS, QUIRKS, LOCS: LOCATIONS, SCOUT_LEVELS, scoutLevel, gainScoutXp, ddCost,
+  MODULES, inv, registerInvestment, investEarn, investTick, investNet, updateInvest, showTab, tabOrder, addCash, money, duration, esc, pick, NAME_PARTS, TIERS,
+  get activeEvent() { return activeEvent; }, set activeEvent(e) { activeEvent = e; }, showEvent,
+  invTests: Object.fromEntries(MODULES.map(m => [m.id, m.test || {}])) };   // each investment's own test handles: T.invTests.<id>
 </script>
 </body>
 </html>
