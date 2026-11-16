@@ -131,6 +131,13 @@ textarea { width: 100%; min-height: 80px; font: 13px var(--mono); border-radius:
 .modal h2 { margin: 0; font-size: 34px; line-height: 1; }
 .modal .amount { font: 600 36px var(--mono); color: var(--money); }
 /* the business sheet and its mini games */
+.sense { background: #fbfcf7; border: 1px solid var(--rule); border-radius: 10px; padding: 8px 12px; display: grid; gap: 4px; }
+.sense-top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.sense-top strong { font-size: 18px; }
+.sense-top span { font: 13px var(--mono); color: var(--muted); }
+.sense .bar { height: 6px; background: var(--rule); border-radius: 3px; overflow: hidden; }
+.sense .bar i { display: block; height: 100%; background: var(--money); }
+.sense .note { margin: 0; font-size: 13px; }
 .biz .acts { grid-column: 2; display: flex; gap: 6px; flex-wrap: wrap; }
 .biz .acts .smallbtn { padding: 4px 10px; font-size: 14px; }
 .sheet { max-width: 560px; max-height: calc(100vh - 32px); overflow-y: auto; }
@@ -234,6 +241,11 @@ textarea { width: 100%; min-height: 80px; font: 13px var(--mono); border-radius:
     </div>
 
     <div class="pane on" id="pane-deals">
+      <div class="sense" id="sense">
+        <div class="sense-top"><strong class="cond" id="senseName">Deal sense: Rookie</strong><span id="senseXp"></span></div>
+        <div class="bar"><i id="senseBar"></i></div>
+        <div class="note" id="senseNext"></div>
+      </div>
       <div class="pane-head">
         <span class="grow" id="dealsTimer">New listings soon</span>
         <button class="smallbtn" id="scout">Scout new deals</button>
@@ -250,7 +262,7 @@ textarea { width: 100%; min-height: 80px; font: 13px var(--mono); border-radius:
       <div class="card">
         <h2 class="cond">Retire and start again</h2>
         <p>Sell everything, hand the keys to a successor, and start over with nothing but your name. Every Legacy star makes all your income and hustling <strong id="legPct">10%</strong> bigger, forever.</p>
-        <p>Stars come from everything you have ever earned. You have <strong id="legNow">0</strong> stars. Retiring now adds <strong id="legGain">0</strong>.</p>
+        <p>Stars come from everything you have ever earned. You have <strong id="legNow">0</strong> stars. Retiring now adds <strong id="legGain">0</strong>. Your Deal sense comes with you too.</p>
         <p class="note" id="legNext"></p>
         <button class="bigbtn go cond" id="retire" aria-disabled="true">Not worth retiring yet</button>
       </div>
@@ -267,7 +279,7 @@ textarea { width: 100%; min-height: 80px; font: 13px var(--mono); border-radius:
       </div>
       <div class="card">
         <h2 class="cond">Start over</h2>
-        <p>Wipes everything, Legacy stars included. This cannot be undone.</p>
+        <p>Wipes everything, Legacy stars and Deal sense included. This cannot be undone.</p>
         <button class="bigbtn danger cond" id="wipe">Wipe my save</button>
       </div>
     </div>
@@ -497,6 +509,22 @@ const DEAL_SLOTS = 4;               // listings on the board (Scout upgrade adds
 const DEAL_REFRESH = 150;           // seconds until the board refreshes by itself
 const SCOUT_COOLDOWN = 45;          // seconds between free "Scout new deals" presses
 
+// DEAL SENSE: you get better at finding businesses the more deals you do,
+// like a real buyer who has looked at hundreds of them. Experience (XP)
+// comes from due diligence, buying, fixing and selling, and it stays with
+// you when you retire. Each level adds a perk (see scoutPerk below).
+const SCOUT_XP = { check: 1, buy: 1, fix: 2, saleProfit: 3, saleLoss: 1 };
+const SCOUT_LEVELS = [
+  { xp: 0,   name: "Rookie",              perk: "You take sellers at their word." },
+  { xp: 8,   name: "Has an eye",          perk: "Due diligence costs half." },
+  { xp: 25,  name: "Deal hunter",         perk: "One more listing on the Deals board." },
+  { xp: 60,  name: "Gut feeling",         perk: "Listings hiding a problem get a \"Something feels off\" warning." },
+  { xp: 120, name: "Sharp negotiator",    perk: "Asking prices come in about 6% lower." },
+  { xp: 220, name: "Well connected",      perk: "One off-market deal on every fresh board (15% off), faster refreshes, and Scout recharges twice as fast." },
+  { xp: 380, name: "Legendary dealmaker", perk: "One more listing, and due diligence is free." },
+];
+const OFF_MARKET_DISCOUNT = 0.85;
+
 // Hustle (tapping)
 const STEPS_PER_JOB = 10;           // hustles to finish a job
 const JOB_BONUS = 5;                // finishing a job pays this many extra hustles
@@ -566,7 +594,7 @@ const UPG = Object.fromEntries(UPGRADES.map(u => [u.id, u]));
 const SAVE_VERSION = 1;
 const LOCAL_KEY = "selfMadeTycoon.save.v1";
 
-function freshState(keepLegacy = 0, keepEarnedAll = 0, keepStats = {}) {
+function freshState(keepLegacy = 0, keepEarnedAll = 0, keepStats = {}, keepScoutXp = 0) {
   const now = Date.now();
   return {
     v: SAVE_VERSION,
@@ -574,6 +602,7 @@ function freshState(keepLegacy = 0, keepEarnedAll = 0, keepStats = {}) {
     earnedRun: 0,               // earned since you last retired (unlocks tiers and upgrades)
     earnedAll: keepEarnedAll,   // earned ever (decides Legacy stars)
     legacy: keepLegacy,         // Legacy stars
+    scoutXp: keepScoutXp,       // Deal sense experience (kept when you retire)
     biz: [],                    // businesses you own (see buyListing for the shape)
     nextBizId: 1,
     deals: [],                  // listings on the Deals board
@@ -710,6 +739,21 @@ const legacyTotalFor = earned => Math.floor(Math.sqrt(earned / LEGACY_DIVISOR));
 const legacyGain = () => Math.max(0, legacyTotalFor(state.earnedAll) - state.legacy);
 const earnedForLegacy = stars => stars * stars * LEGACY_DIVISOR;
 
+// Deal sense level (0 = Rookie) and whether you have reached level n
+const scoutLevel = () => SCOUT_LEVELS.reduce((best, L, i) => (state.scoutXp || 0) >= L.xp ? i : best, 0);
+const scoutPerk = n => scoutLevel() >= n;
+function gainScoutXp(kind) {
+  const before = scoutLevel();
+  state.scoutXp = (state.scoutXp || 0) + SCOUT_XP[kind];
+  const after = scoutLevel();
+  if (after > before) {
+    toast(`Deal sense up: ${SCOUT_LEVELS[after].name}! ${SCOUT_LEVELS[after].perk}`);
+    if (after === 2 || after === 6) refreshDeals();      // the extra listing shows up right away
+  }
+}
+const dealRefreshSeconds = () => (scoutPerk(5) ? 100 : DEAL_REFRESH);
+const scoutCooldown = () => (scoutPerk(5) ? SCOUT_COOLDOWN / 2 : SCOUT_COOLDOWN);
+
 function upgradeAvailable(u) {
   if (state.upgrades[u.id]) return false;
   if (u.kind === "sector") return sectorLevels(u.sector) >= u.levels;
@@ -748,7 +792,7 @@ function makeListing(tierBias) {
   for (let k = 0; k < choices.length; k++) { roll -= weights[k]; if (roll < 0) { ind = choices[k]; break; } }
   const loc = Math.min(3, Math.max(0, Math.round(Math.random() * 3 - 0.2)));   // "okay" and "good" most common
   const quirk = pickQuirk();
-  const noise = 0.92 + Math.random() * 0.16;                                    // +/- 8% haggle room
+  const noise = 0.92 + Math.random() * 0.16 - (scoutPerk(4) ? 0.06 : 0);       // +/- 8% haggle room (less if you're a sharp negotiator)
   return {
     key: Math.random().toString(36).slice(2, 9),   // just to tell listings apart on screen
     ind: ind.id, name: makeName(ind), city: pick(NAME_PARTS.city), loc, quirk,
@@ -760,14 +804,15 @@ function makeListing(tierBias) {
     checked: false,                                // due diligence done?
   };
 }
-// Fill the board: half from your top tier, half from any unlocked tier,
-// and always at least one thing that costs less than the cheapest... so
-// you are never stuck with nothing you could ever afford.
+// Fill the board: half from your top tier, half from any unlocked tier.
+// Deal sense adds listings, and at "Well connected" the last one is an
+// off-market deal: a seller who calls you before they call a broker.
 function refreshDeals() {
-  const slots = DEAL_SLOTS + upgradeTotal("slots", 0, (a, b) => a + b);
+  const slots = DEAL_SLOTS + upgradeTotal("slots", 0, (a, b) => a + b) + (scoutPerk(2) ? 1 : 0) + (scoutPerk(6) ? 1 : 0);
   state.deals = [];
   for (let i = 0; i < slots; i++) state.deals.push(makeListing(i < Math.ceil(slots / 2) ? "top" : "any"));
-  state.dealsRefreshAt = Date.now() + DEAL_REFRESH * 1000;
+  if (scoutPerk(5)) { const l = state.deals[slots - 1]; l.offMarket = true; l.priceMult *= OFF_MARKET_DISCOUNT; }
+  state.dealsRefreshAt = Date.now() + dealRefreshSeconds() * 1000;
   dealsKey = "";
 }
 
@@ -816,6 +861,7 @@ function buyListing(i) {
     fixRetryAt: 0,                 // after a failed mini game, when you can try again
   });
   state.stats.bought++;
+  gainScoutXp("buy");
   state.deals[i] = makeListing(i < Math.ceil(state.deals.length / 2) ? "top" : "any");   // a new listing takes its place
   dealsKey = "";
   if (l.hidden && !l.checked) showModal("Surprise!", `You took over ${l.name} and found out the seller left something out: ${PROBLEMS[l.hidden].name.toLowerCase()}. ` +
@@ -859,7 +905,7 @@ function scoutDeals() {
   const wait = Math.ceil((state.scoutReadyAt - Date.now()) / 1000);
   if (wait > 0) { toast(`Your broker needs ${wait}s to find more`); return; }
   refreshDeals();
-  state.scoutReadyAt = Date.now() + SCOUT_COOLDOWN * 1000;
+  state.scoutReadyAt = Date.now() + scoutCooldown() * 1000;
   dirty = true;
   render(true);
 }
@@ -962,7 +1008,7 @@ function retire() {
   if (sheetOpen()) closeSheet();
   const stats = Object.assign({}, state.stats, { retires: state.stats.retires + 1 });
   const mode = state.buyMode;
-  state = freshState(state.legacy + gain, state.earnedAll, stats);
+  state = freshState(state.legacy + gain, state.earnedAll, stats, state.scoutXp);
   state.buyMode = mode;
   refreshDeals();
   if (activeEvent) closeEvent();
@@ -1019,7 +1065,7 @@ function addProceeds(amount, basis) {
 
 // Due diligence on listing i: pay a little to find out what the seller
 // isn't telling you.
-const ddCost = l => Math.max(5, listingPrice(l) * DD_COST);
+const ddCost = l => (scoutPerk(6) ? 0 : Math.max(5, listingPrice(l) * DD_COST) * (scoutPerk(1) ? 0.5 : 1));
 function checkListing(i) {
   const l = state.deals[i];
   if (!l || l.checked) return false;
@@ -1028,6 +1074,7 @@ function checkListing(i) {
   state.cash -= cost;
   l.checked = true;
   state.stats.checks++;
+  gainScoutXp("check");
   toast(l.hidden ? `Due diligence found a problem: ${PROBLEMS[l.hidden].name.toLowerCase()}` : "Due diligence: no hidden problems. It's clean.");
   dealsKey = "";
   dirty = true;
@@ -1066,6 +1113,7 @@ function finishFix(b) {
     b.quirk = TURNED_AROUND;
   }
   state.stats.fixes++;
+  gainScoutXp("fix");
   toast(`${b.name}: ${PROBLEMS[p].name.toLowerCase()} fixed. It earns more and is worth more now.`);
   dirty = true;
 }
@@ -1097,6 +1145,7 @@ function finishSale(b) {
   state.biz = state.biz.filter(x => x !== b);
   state.stats.sold++;
   state.stats.flipProfit += profit;
+  gainScoutXp(profit > 0 ? "saleProfit" : "saleLoss");
   if (sheetBizId === b.id) closeSheet();
   showModal("Sold!", `${b.name} has a new owner. You put ${money(b.paid)} into it, so that's a ` +
     (profit >= 0 ? `profit of ${money(profit)}.` : `loss of ${money(-profit)}.`), "+" + money(value));
@@ -1197,8 +1246,12 @@ const decodeSave = text => validState(JSON.parse(decodeURIComponent(escape(atob(
 function validState(s) {
   if (!s || typeof s !== "object" || typeof s.cash !== "number" || !Array.isArray(s.biz)) throw new Error("not a save");
   const base = freshState();
-  const out = Object.assign(base, s);
-  out.stats = Object.assign(base.stats, s.stats || {});
+  // Copy onto a SECOND fresh state: `base` must stay untouched so the
+  // repairs below can fall back to its default values. (Copying onto
+  // `base` itself, as an older version did, meant a broken number such as
+  // a negative cash total was "repaired" with itself and kept.)
+  const out = Object.assign(freshState(), s);
+  out.stats = Object.assign({}, base.stats, s.stats || {});
   out.biz = s.biz.filter(b => b && IND[b.ind]).map(b => ({
     id: Number(b.id) || 0, ind: b.ind, name: String(b.name || IND[b.ind].name), city: String(b.city || ""),
     loc: Math.min(3, Math.max(0, b.loc | 0)), quirk: Math.min(QUIRKS.length - 1, Math.max(0, b.quirk | 0)),
@@ -1212,10 +1265,10 @@ function validState(s) {
   }));
   out.nextBizId = Math.max(Number(s.nextBizId) || 1, ...out.biz.map(b => b.id + 1), 1);
   out.deals = Array.isArray(s.deals) ? s.deals.filter(l => l && IND[l.ind] && Number.isFinite(l.priceMult) && Number.isFinite(l.incMult))
-    .map(l => Object.assign({}, l, { hidden: PROBLEMS[l.hidden]?.hidden ? l.hidden : null, checked: !!l.checked })) : [];
+    .map(l => Object.assign({}, l, { hidden: PROBLEMS[l.hidden]?.hidden ? l.hidden : null, checked: !!l.checked, offMarket: !!l.offMarket })) : [];
   out.upgrades = {};
   for (const id in (s.upgrades || {})) if (UPG[id]) out.upgrades[id] = true;
-  for (const k of ["cash", "earnedRun", "earnedAll", "legacy", "savedAt", "lastTick", "nextEventAt", "boomUntil", "dealsRefreshAt", "scoutReadyAt"]) {
+  for (const k of ["cash", "earnedRun", "earnedAll", "legacy", "scoutXp", "savedAt", "lastTick", "nextEventAt", "boomUntil", "dealsRefreshAt", "scoutReadyAt"]) {
     if (!Number.isFinite(out[k]) || out[k] < 0) out[k] = base[k];
   }
   if (!["1", "10", "max"].includes(out.buyMode)) out.buyMode = "1";
@@ -1344,7 +1397,8 @@ function updateDeals() {
         <div><h3 class="cond">${esc(l.name)}</h3><div class="sub">${esc(ind.name)} · ${esc(l.city)} · ${SECTORS[ind.sector].name}</div></div>
         <button class="buy" id="deal-${i}"><span class="pr"></span><small>buy it</small></button>
         <div class="chips"><span class="chip ${deal.tone}">${deal.text}</span><span class="chip ${locn.tone}">${locn.name}</span>${l.quirk ? `<span class="chip ${q.tone}">${esc(q.name)}</span>` : ""}${
-          !l.checked ? "" : l.hidden ? `<span class="chip bad">Hidden: ${esc(PROBLEMS[l.hidden].name)}</span>` : `<span class="chip good">Checked: clean</span>`}</div>
+          l.offMarket ? `<span class="chip great">Off-market</span>` : ""}${
+          !l.checked ? (l.hidden && scoutPerk(3) ? `<span class="chip bad">Something feels off</span>` : "") : l.hidden ? `<span class="chip bad">Hidden: ${esc(PROBLEMS[l.hidden].name)}</span>` : `<span class="chip good">Checked: clean</span>`}</div>
         <div class="line"></div>
         ${l.checked ? "" : `<div class="acts"><button class="smallbtn" id="dd-${i}"><span class="ddc"></span></button></div>`}`;
       row.querySelector(".buy").addEventListener("click", () => buyListing(i));
@@ -1363,12 +1417,18 @@ function updateDeals() {
     btn.setAttribute("aria-disabled", String(!can));
     btn.querySelector(".pr").textContent = money(price);
     const dd = row.querySelector(".ddc");
-    if (dd) { const c = ddCost(l); dd.textContent = `Due diligence · ${money(c)}`; dd.parentNode.setAttribute("aria-disabled", String(c > state.cash)); }
+    if (dd) { const c = ddCost(l); dd.textContent = c ? `Due diligence · ${money(c)}` : "Due diligence · free"; dd.parentNode.setAttribute("aria-disabled", String(c > state.cash)); }
     const owned = ownedOf(l.ind);
     row.querySelector(".line").textContent = `Earns ${money(inc)}/sec · pays for itself in ${duration(price / inc * 1000)}` + (owned ? ` · you own ${owned} (${unitsOf(l.ind)} levels)` : "");
   });
   $("dealBadge").hidden = affordable === 0;
   $("dealBadge").textContent = affordable;
+  const lv = scoutLevel(), L = SCOUT_LEVELS[lv], N = SCOUT_LEVELS[lv + 1], xp = state.scoutXp || 0;
+  $("senseName").textContent = `Deal sense: ${L.name}`;
+  $("senseXp").textContent = N ? `${xp} / ${N.xp} XP` : `${xp} XP · max level`;
+  $("senseBar").style.width = (N ? (xp - L.xp) / (N.xp - L.xp) * 100 : 100) + "%";
+  $("senseNext").textContent = N ? `Next: ${N.name}. ${N.perk} Earn XP by checking, buying, fixing and selling businesses.`
+                                 : "You've seen it all. Every perk is yours.";
   const left = Math.max(0, state.dealsRefreshAt - Date.now());
   $("dealsTimer").textContent = `New listings in ${duration(left)}`;
   const wait = Math.ceil((state.scoutReadyAt - Date.now()) / 1000);
@@ -1493,6 +1553,7 @@ function updateStats() {
     ["Cash", money(state.cash)], ["Earned this run", money(state.earnedRun)], ["Earned ever", money(state.earnedAll)],
     ["Income", money(incomeNow()) + "/sec"], ["Businesses", state.biz.length],
     ["Legacy", `★ ${state.legacy} (+${Math.round(state.legacy * LEGACY_BONUS * 100)}%)`],
+    ["Deal sense", `${SCOUT_LEVELS[scoutLevel()].name} (${state.scoutXp || 0} XP)`],
     ["Hustles", state.stats.taps.toLocaleString("en-US")], ["Jobs finished", state.stats.jobs.toLocaleString("en-US")],
     ["Businesses bought", state.stats.bought], ["Businesses sold", state.stats.sold],
     ["Profit from selling", money(state.stats.flipProfit)], ["Problems fixed", state.stats.fixes], ["Due diligence checks", state.stats.checks],
@@ -2052,7 +2113,7 @@ window.T = { get state() { return state; }, set state(s) { state = s; }, INDUSTR
   baseIncome, bizIncome, incomeNow, tapValue, listingPrice, listingIncome, expandCost, maxExpand, legacyGain, retire, earnBetween, upgradeAvailable,
   validState, encodeSave, decodeSave, catchUp, render, rebuildLists, refreshDeals, makeListing, makeEvent, chooseEvent, saveNow, short,
   tierUnlocked, sectorLevels, problemsOf, saleValue, fixCost, checkListing, startFix, finishProjects, listForSale, cancelSale, openSheet, closeSheet,
-  tryFix, PROBLEMS, QUIRKS, LOCS: LOCATIONS, get activeEvent() { return activeEvent; }, set activeEvent(e) { activeEvent = e; }, showEvent };
+  tryFix, PROBLEMS, QUIRKS, LOCS: LOCATIONS, SCOUT_LEVELS, scoutLevel, gainScoutXp, ddCost, get activeEvent() { return activeEvent; }, set activeEvent(e) { activeEvent = e; }, showEvent };
 </script>
 </body>
 </html>
