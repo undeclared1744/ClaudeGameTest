@@ -1,0 +1,1545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Self-Made Tycoon</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* =====================================================================
+   LOOK AND FEEL
+   Left side: a night-time "terminal" with amber ticker numbers and the
+   skyline of everything you own. Right side: ledger paper with faint
+   green rules, where the deals and your books live.
+   Layout: two columns on wide screens; one column on phones with the
+   terminal pinned to the top.
+   ===================================================================== */
+:root {
+  --night:  #121a2b;   /* terminal / sky */
+  --night-2:#1c2740;   /* raised terminal surfaces */
+  --amber:  #f2b84b;   /* ticker numbers and the Hustle button: the one bold color */
+  --paper:  #eef1e6;   /* ledger paper */
+  --rule:   #d6dfcb;   /* ledger lines and row fills */
+  --ink:    #1b2433;   /* normal text */
+  --muted:  #5d6672;   /* secondary text */
+  --money:  #2e8b57;   /* good / affordable */
+  --loss:   #c0443a;   /* bad / danger */
+  --display: "Archivo", "Arial Narrow", sans-serif;
+  --body: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --mono: "IBM Plex Mono", "Courier New", monospace;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--paper); color: var(--ink); font: 16px/1.4 var(--body); -webkit-tap-highlight-color: transparent; overflow: hidden; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--amber); outline-offset: 2px; }
+[hidden] { display: none !important; }   /* hidden must win over display rules */
+.cond { font-family: var(--display); font-stretch: 68%; font-weight: 800; text-transform: uppercase; letter-spacing: .02em; }
+
+.app { display: grid; grid-template-columns: minmax(360px, 42%) 1fr; height: 100%; }
+
+/* ---------- LEFT: the terminal ---------- */
+.terminal { background: var(--night); color: #dfe6f2; display: flex; flex-direction: column; gap: 12px; padding: 16px; position: relative; overflow: hidden; }
+.brand { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.brand h1 { margin: 0; font-size: 34px; line-height: 1; color: #fff; }
+.brand .save-state { font: 12px var(--mono); color: #8794ad; text-align: right; }
+.rank { font: 600 14px var(--mono); color: var(--amber); letter-spacing: .04em; }
+.ticker { background: var(--night-2); border-radius: 8px; padding: 10px 14px; font-family: var(--mono); display: grid; gap: 2px; }
+.ticker .cash { font-size: 40px; line-height: 1.05; color: var(--amber); font-variant-numeric: tabular-nums; }
+.ticker .rates { display: flex; gap: 16px; flex-wrap: wrap; font-size: 14px; color: #aab5c8; }
+.ticker .boom { color: #7fe0a3; }
+.sky { position: relative; flex: 1 1 auto; min-height: 140px; border-radius: 8px; overflow: hidden; }
+#skyline { width: 100%; height: 100%; display: block; }
+.event {
+  position: absolute; left: 12px; right: 12px; bottom: 12px; z-index: 3;
+  background: #fff8e8; color: var(--ink); border-radius: 10px; padding: 12px 14px; display: grid; gap: 8px;
+  border-left: 8px solid var(--amber); box-shadow: 0 12px 30px rgba(0,0,0,.45);
+}
+.event h2 { margin: 0; font-size: 24px; line-height: 1; }
+.event p { margin: 0; font-size: 15px; }
+.event .opts { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.event .opts button { appearance: none; border: 0; border-radius: 8px; padding: 8px 12px; cursor: pointer; background: var(--night); color: #fff; font-weight: 700; }
+.event .opts button.yes { background: var(--money); }
+.event .left { margin-left: auto; font: 12px var(--mono); color: var(--muted); }
+.job { font-family: var(--mono); font-size: 14px; display: grid; gap: 5px; color: #c9d2e3; }
+.job .bar { height: 7px; background: var(--night-2); border-radius: 4px; overflow: hidden; }
+.job .bar i { display: block; height: 100%; width: 0; background: var(--amber); transition: width .08s; }
+.hustle {
+  appearance: none; border: 0; cursor: pointer; border-radius: 14px; background: var(--amber); color: var(--night);
+  padding: 16px 12px; font-size: 32px; line-height: 1; box-shadow: 0 6px 0 #a87a22, 0 10px 20px rgba(0,0,0,.35);
+  touch-action: manipulation; user-select: none;
+}
+.hustle small { display: block; font: 600 14px var(--body); text-transform: none; letter-spacing: 0; margin-top: 6px; font-stretch: 100%; }
+.hustle:active, .hustle.pressed { transform: translateY(5px); box-shadow: 0 1px 0 #a87a22, 0 4px 10px rgba(0,0,0,.35); }
+.padhints { display: none; font: 12px var(--mono); color: #8794ad; text-align: center; }
+.padhints.on { display: block; }
+.floats { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 4; }
+.float { position: absolute; font: 600 20px var(--mono); color: var(--amber); animation: rise 1s ease-out forwards; text-shadow: 0 2px 4px rgba(0,0,0,.6); white-space: nowrap; }
+@keyframes rise { to { transform: translateY(-70px); opacity: 0; } }
+
+/* ---------- RIGHT: the ledger ---------- */
+.ledger { display: flex; flex-direction: column; min-height: 0;
+  background: var(--paper) repeating-linear-gradient(to bottom, transparent 0 31px, rgba(46,139,87,.09) 31px 32px); }
+.tabs { display: flex; gap: 2px; padding: 12px 16px 0; background: var(--rule); flex-wrap: wrap; align-items: flex-end; }
+.tab { appearance: none; border: 0; cursor: pointer; padding: 9px 14px; border-radius: 8px 8px 0 0; background: transparent; color: var(--muted); font-size: 20px; }
+.tab[aria-selected="true"] { background: var(--paper); color: var(--ink); }
+.badge { background: var(--money); color: #fff; border-radius: 10px; padding: 0 7px; font: 700 13px var(--body); margin-left: 5px; vertical-align: 2px; letter-spacing: 0; }
+.buymode { margin-left: auto; display: flex; gap: 4px; padding-bottom: 7px; align-items: center; font-size: 13px; color: var(--muted); }
+.buymode button { appearance: none; border: 2px solid var(--ink); background: transparent; border-radius: 6px; padding: 3px 9px; font: 700 13px var(--body); cursor: pointer; }
+.buymode button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.pane { overflow-y: auto; padding: 14px 16px 28px; display: none; flex-direction: column; gap: 10px; flex: 1; }
+.pane.on { display: flex; }
+.pane-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.pane-head .grow { flex: 1; color: var(--muted); font-size: 14px; }
+.note { font-size: 14px; color: var(--muted); margin: 2px; }
+
+/* a business: deal card or empire row */
+.biz { display: grid; grid-template-columns: 44px 1fr auto; gap: 4px 12px; align-items: center; background: #fbfcf7; border: 1px solid var(--rule); border-left: 6px solid var(--rule); border-radius: 10px; padding: 10px 12px; }
+.biz.affordable { border-left-color: var(--money); }
+.logo { width: 44px; height: 44px; display: grid; place-items: center; color: #fff; font: 800 16px var(--display); font-stretch: 75%; grid-row: span 2; }
+.biz h3 { margin: 0; font-size: 22px; line-height: 1.05; }
+.biz .sub { font-size: 13px; color: var(--muted); }
+.biz .chips { grid-column: 2; display: flex; gap: 5px; flex-wrap: wrap; }
+.chip { font: 600 12px var(--body); padding: 2px 7px; border-radius: 10px; background: var(--rule); color: var(--ink); }
+.chip.good { background: #d3ecd9; color: #1d6a3f; }
+.chip.bad { background: #f3d6d2; color: #8f2d25; }
+.chip.great { background: var(--money); color: #fff; }
+.biz .line { grid-column: 2; font: 13px var(--mono); color: var(--ink); }
+.buy { grid-row: 1 / span 3; grid-column: 3; appearance: none; border: 0; cursor: pointer; border-radius: 8px; min-width: 118px; padding: 9px 10px; background: var(--ink); color: var(--paper); font: 600 16px var(--mono); text-align: center; font-variant-numeric: tabular-nums; }
+.buy small { display: block; font: 12px var(--body); opacity: .85; }
+.buy[aria-disabled="true"] { background: #c4ccbc; color: #6d7569; cursor: default; }
+.smallbtn { appearance: none; border: 2px solid var(--ink); background: transparent; border-radius: 8px; padding: 6px 12px; cursor: pointer; font-weight: 700; }
+.smallbtn[aria-disabled="true"] { opacity: .45; cursor: default; }
+.card { background: #fbfcf7; border: 1px solid var(--rule); border-radius: 10px; padding: 14px; display: grid; gap: 10px; }
+.card h2 { margin: 0; font-size: 28px; line-height: 1; }
+.card p { margin: 0; }
+.bigbtn { appearance: none; border: 0; cursor: pointer; border-radius: 10px; padding: 11px 16px; background: var(--ink); color: var(--paper); font-size: 20px; justify-self: start; }
+.bigbtn.go { background: var(--money); color: #fff; }
+.bigbtn.danger { background: var(--loss); color: #fff; }
+.bigbtn[aria-disabled="true"] { background: #c4ccbc; color: #6d7569; cursor: default; }
+.stats { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; font-size: 15px; margin: 0; }
+.stats dt { color: var(--muted); }
+.stats dd { margin: 0; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+textarea { width: 100%; min-height: 80px; font: 13px var(--mono); border-radius: 6px; border: 2px solid var(--rule); padding: 8px; background: #fff; }
+
+.modal-back { position: fixed; inset: 0; background: rgba(12,16,26,.65); display: none; place-items: center; z-index: 10; padding: 16px; }
+.modal-back.on { display: grid; }
+.modal { background: var(--paper); border-radius: 14px; padding: 20px; max-width: 440px; width: 100%; display: grid; gap: 12px; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+.modal h2 { margin: 0; font-size: 34px; line-height: 1; }
+.modal .amount { font: 600 36px var(--mono); color: var(--money); }
+.toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--night); color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 15px; z-index: 11; opacity: 0; transition: opacity .25s; pointer-events: none; max-width: 90vw; text-align: center; }
+.toast.on { opacity: 1; }
+
+/* ---------- phones ---------- */
+@media (max-width: 760px) {
+  body { overflow: auto; }
+  .app { display: block; height: auto; }
+  .terminal { position: sticky; top: 0; z-index: 5; padding: 10px 12px; gap: 7px; }
+  .brand h1 { font-size: 24px; white-space: nowrap; }
+  .brand .save-state { font-size: 11px; max-width: 34%; }
+  .ticker .cash { font-size: 30px; }
+  .ticker .rates { font-size: 13px; gap: 10px; }
+  .sky { flex: none; height: 84px; min-height: 0; }
+  .event { position: fixed; left: 10px; right: 10px; bottom: 10px; top: auto; }
+  .job { font-size: 12px; }
+  .hustle { padding: 11px; font-size: 26px; }
+  .hustle small { font-size: 12px; margin-top: 3px; }
+  .pane { overflow: visible; }
+  .tab { padding: 8px 8px; font-size: 17px; }
+  .buymode { width: 100%; margin-left: 0; padding: 6px 0; }
+  .biz { grid-template-columns: 36px 1fr; }
+  .logo { width: 36px; height: 36px; font-size: 13px; }
+  .buy { grid-row: auto; grid-column: 1 / -1; order: 9; }   /* button goes under the details */
+}
+@media (prefers-reduced-motion: reduce) { .float { display: none; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- ================= LEFT: THE TERMINAL ================= -->
+  <section class="terminal" aria-label="You">
+    <div class="brand">
+      <div>
+        <h1 class="cond">Self-Made Tycoon</h1>
+        <div class="rank" id="rank">SIDE HUSTLER</div>
+      </div>
+      <span class="save-state" id="saveState">Saving on this device</span>
+    </div>
+    <div class="ticker">
+      <div class="cash" id="cash">$0</div>
+      <div class="rates">
+        <span id="ips">$0/sec</span>
+        <span id="tapv">$1 per hustle</span>
+        <span id="owned">0 businesses</span>
+        <span class="boom" id="boom"></span>
+      </div>
+    </div>
+    <div class="sky">
+      <canvas id="skyline" aria-hidden="true"></canvas>
+      <div class="event" id="event" hidden role="region" aria-label="Something happened">
+        <h2 class="cond" id="evTitle"></h2>
+        <p id="evText"></p>
+        <div class="opts" id="evOpts"></div>
+      </div>
+    </div>
+    <div class="job">
+      <div id="jobText">Mowing a lawn</div>
+      <div class="bar"><i id="jobBar"></i></div>
+    </div>
+    <button class="hustle cond" id="hustle">Hustle <small id="hustleSub">Tap to earn money yourself</small></button>
+    <div class="padhints" id="padHints">A press · X hustle · B take the offer · LB/RB tabs · Y buy amount</div>
+    <div class="floats" id="floats"></div>
+  </section>
+
+  <!-- ================= RIGHT: THE LEDGER ================= -->
+  <section class="ledger">
+    <div class="tabs" role="tablist">
+      <button class="tab cond" role="tab" id="tab-deals" data-pane="deals" aria-selected="true">Deals<span class="badge" id="dealBadge" hidden>0</span></button>
+      <button class="tab cond" role="tab" id="tab-empire" data-pane="empire" aria-selected="false">Empire</button>
+      <button class="tab cond" role="tab" id="tab-upg" data-pane="upg" aria-selected="false">Upgrades<span class="badge" id="upgBadge" hidden>0</span></button>
+      <button class="tab cond" role="tab" id="tab-retire" data-pane="retire" aria-selected="false">Retire</button>
+      <button class="tab cond" role="tab" id="tab-set" data-pane="set" aria-selected="false">Stats</button>
+      <div class="buymode" id="buymode" aria-label="How many levels to expand at once">
+        Expand
+        <button id="bm1" data-mode="1" aria-pressed="true">x1</button>
+        <button id="bm10" data-mode="10" aria-pressed="false">x10</button>
+        <button id="bmmax" data-mode="max" aria-pressed="false">Max</button>
+      </div>
+    </div>
+
+    <div class="pane on" id="pane-deals">
+      <div class="pane-head">
+        <span class="grow" id="dealsTimer">New listings soon</span>
+        <button class="smallbtn" id="scout">Scout new deals</button>
+      </div>
+      <div id="dealList" style="display:grid; gap:10px"></div>
+      <p class="note" id="nextTier"></p>
+    </div>
+    <div class="pane" id="pane-empire">
+      <div class="pane-head"><span class="grow" id="empireSummary"></span></div>
+      <div id="empireList" style="display:grid; gap:10px"></div>
+    </div>
+    <div class="pane" id="pane-upg"></div>
+    <div class="pane" id="pane-retire">
+      <div class="card">
+        <h2 class="cond">Retire and start again</h2>
+        <p>Sell everything, hand the keys to a successor, and start over with nothing but your name. Every Legacy star makes all your income and hustling <strong id="legPct">10%</strong> bigger, forever.</p>
+        <p>Stars come from everything you have ever earned. You have <strong id="legNow">0</strong> stars. Retiring now adds <strong id="legGain">0</strong>.</p>
+        <p class="note" id="legNext"></p>
+        <button class="bigbtn go cond" id="retire" aria-disabled="true">Not worth retiring yet</button>
+      </div>
+    </div>
+    <div class="pane" id="pane-set">
+      <div class="card"><h2 class="cond">Stats</h2><dl class="stats" id="stats"></dl></div>
+      <div class="card">
+        <h2 class="cond">Your save</h2>
+        <p>The game saves itself every 30 seconds and when you leave.</p>
+        <button class="bigbtn cond" id="copySave">Copy save code</button>
+        <label for="importBox">Paste a save code to load it:</label>
+        <textarea id="importBox" spellcheck="false"></textarea>
+        <button class="bigbtn cond" id="importSave">Load pasted save</button>
+      </div>
+      <div class="card">
+        <h2 class="cond">Start over</h2>
+        <p>Wipes everything, Legacy stars included. This cannot be undone.</p>
+        <button class="bigbtn danger cond" id="wipe">Wipe my save</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="modal-back" id="modalBack">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <h2 class="cond" id="modalTitle">While you were out</h2>
+    <p id="modalText"></p>
+    <div class="amount" id="modalAmount"></div>
+    <button class="bigbtn go cond" id="modalOk">Back to work</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* =====================================================================
+   SELF-MADE TYCOON
+   Start with nothing but your own two hands (the Hustle button). Buy
+   small businesses from the Deals board, expand them, and work your way
+   up from a lawn care route to an airline. Every business for sale is
+   generated on the spot: a real kind of business with a made-up name,
+   a city, a location rating and a quirk, so no two runs look the same.
+
+   HOW THIS FILE IS ORGANISED
+     1. GAME DATA       - industries, name parts, quirks, upgrades, numbers
+     2. GAME STATE      - the one object that IS your save
+     3. MATH            - income, prices, legacy stars
+     4. DEAL GENERATOR  - makes the businesses for sale
+     5. ACTIONS         - hustle, buy, expand, events, retire
+     6. TIME            - the main loop and away-from-game earnings
+     7. SAVING          - this browser + your Claude account (syncs devices)
+     8. SCREEN          - numbers, lists, the skyline
+     9. CONTROLS        - touch/mouse, keyboard, game controller
+    10. START UP
+   ===================================================================== */
+
+
+/* =====================================================================
+   1. GAME DATA
+   ===================================================================== */
+
+// Sectors group industries. Owning lots of one sector unlocks upgrades for it.
+// color: used for the business logo and its building in the skyline.
+const SECTORS = {
+  services: { name: "Services",      color: "#3a8fb7" },
+  auto:     { name: "Auto",          color: "#c0443a" },
+  transport:{ name: "Transport",     color: "#4a9d6b" },
+  tech:     { name: "Tech",          color: "#22a596" },
+  food:     { name: "Food",          color: "#d9822b" },
+  retail:   { name: "Retail",        color: "#8e5ba8" },
+  property: { name: "Property",      color: "#a88d2f" },
+  fun:      { name: "Entertainment", color: "#d35d8e" },
+  finance:  { name: "Finance",       color: "#5c6bc0" },
+};
+
+// Tiers: bigger businesses unlock as your earnings this run grow.
+// rank is your title at that stage; gigs are what the Hustle button does.
+const TIERS = [
+  { unlock: 0,     rank: "Side hustler",         gigs: ["Mowing a lawn", "Washing a car", "Delivering a pizza", "Fixing a cracked screen"] },
+  { unlock: 2e3,   rank: "Small business owner", gigs: ["Working the food truck window", "Restocking vending machines", "Clearing a paper jam", "Pulling espresso shots"] },
+  { unlock: 1e5,   rank: "Main Street mogul",    gigs: ["Covering a shift at the diner", "Haggling with a supplier", "Training a new hire", "Walking the car wash line"] },
+  { unlock: 5e6,   rank: "Regional magnate",     gigs: ["Negotiating a lease", "Meeting with the bank", "Touring a hotel", "Signing a freight contract"] },
+  { unlock: 5e8,   rank: "Industry titan",       gigs: ["Pitching investors", "Courting a merger", "Doing a TV interview", "Reviewing the quarterly numbers"] },
+  { unlock: 1e11,  rank: "Global tycoon",        gigs: ["Ringing the opening bell", "Lunch with a senator", "Touring a launch pad", "Pricing out a small island"] },
+];
+
+// Every kind of business. cost = asking price for your first one (before the
+// listing's own quirks). Its income per second is worked out below from
+// TIER_PAYBACK, so bigger businesses take longer to pay for themselves.
+// names: patterns for made-up names. {place} {surname} {first} {adj} {tech}
+// {city} {mascot} are filled in from the NAME PARTS lists below.
+const INDUSTRIES = [
+  // --- tier 0: side hustles ---
+  { id: "lawn",     name: "Lawn care route",    sector: "services", tier: 0, cost: 25,     names: ["{surname} Lawn Care", "{place} Lawn & Garden", "{first}'s Mowing"] },
+  { id: "detail",   name: "Car detailing",      sector: "auto",     tier: 0, cost: 70,     names: ["{adj} Shine Detailing", "{first}'s Mobile Detail", "{place} Auto Spa"] },
+  { id: "courier",  name: "Bike courier",       sector: "transport",tier: 0, cost: 180,    names: ["{first}'s Bike Courier", "{place} Express", "{adj} Wheels Courier"] },
+  { id: "phonefix", name: "Phone repair kiosk", sector: "tech",     tier: 0, cost: 450,    names: ["{place} Phone Fix", "{adj} Screen Repair", "{first}'s Cell Doctor"] },
+  // --- tier 1: small businesses ---
+  { id: "foodtruck",name: "Food truck",         sector: "food",     tier: 1, cost: 2500,   names: ["{first}'s Taco Truck", "{place} BBQ Wagon", "{adj} Bites Food Truck"] },
+  { id: "laundry",  name: "Laundromat",         sector: "services", tier: 1, cost: 5000,   names: ["{place} Laundromat", "{adj} Suds Laundry", "{surname} Wash & Fold"] },
+  { id: "vending",  name: "Vending route",      sector: "retail",   tier: 1, cost: 8000,   names: ["{place} Vending Co.", "{adj} Snack Route", "{surname} Vending"] },
+  { id: "copier",   name: "Copier service",     sector: "services", tier: 1, cost: 12000,  names: ["{place} Copier Service", "{surname} Business Machines", "{adj} Imaging Solutions"] },
+  { id: "coffee",   name: "Coffee shop",        sector: "food",     tier: 1, cost: 18000,  names: ["{place} Coffee Co.", "{adj} Bean Roasters", "{first}'s Espresso Bar"] },
+  // --- tier 2: main street ---
+  { id: "diner",    name: "Diner",              sector: "food",     tier: 2, cost: 120e3,  names: ["{first}'s Diner", "{place} Grill", "The {adj} Spoon"] },
+  { id: "carwash",  name: "Car wash",           sector: "auto",     tier: 2, cost: 200e3,  names: ["{place} Car Wash", "{adj} Wave Car Wash", "{surname} Express Wash"] },
+  { id: "garage",   name: "Auto repair shop",   sector: "auto",     tier: 2, cost: 300e3,  names: ["{surname} Auto Repair", "{place} Garage", "{adj} Wrench Automotive"] },
+  { id: "gym",      name: "Gym",                sector: "services", tier: 2, cost: 450e3,  names: ["{place} Fitness", "{adj} Iron Gym", "{surname} Strength Club"] },
+  { id: "hvac",     name: "HVAC company",       sector: "services", tier: 2, cost: 600e3,  names: ["{surname} Heating & Air", "{place} HVAC", "{adj} Comfort Systems"] },
+  { id: "hardware", name: "Hardware store",     sector: "retail",   tier: 2, cost: 800e3,  names: ["{place} Hardware", "{surname} Supply Co.", "{adj} Tool & Lumber"] },
+  // --- tier 3: regional ---
+  { id: "grocery",  name: "Grocery store",      sector: "retail",   tier: 3, cost: 8e6,    names: ["{place} Market", "{surname}'s Grocery", "{adj} Basket Foods"] },
+  { id: "insure",   name: "Insurance agency",   sector: "finance",  tier: 3, cost: 12e6,   names: ["{surname} Insurance Group", "{place} Mutual", "{adj} Shield Insurance"] },
+  { id: "hotel",    name: "Hotel",              sector: "property", tier: 3, cost: 15e6,   names: ["The {place} Hotel", "{adj} Inn & Suites", "{surname} House Hotel"] },
+  { id: "storage",  name: "Self-storage park",  sector: "property", tier: 3, cost: 22e6,   names: ["{place} Self Storage", "{adj} Lock Storage", "{surname} Storage Center"] },
+  { id: "brewery",  name: "Brewery",            sector: "food",     tier: 3, cost: 30e6,   names: ["{place} Brewing Co.", "{adj} Barrel Brewery", "{surname} Brothers Brewing"] },
+  { id: "trucking", name: "Trucking company",   sector: "transport",tier: 3, cost: 45e6,   names: ["{surname} Freight", "{place} Logistics", "{adj} Haul Trucking"] },
+  { id: "dealer",   name: "Car dealership",     sector: "auto",     tier: 3, cost: 60e6,   names: ["{surname} Motors", "{place} Auto Group", "{adj} Ride Motors"] },
+  // --- tier 4: big business ---
+  { id: "software", name: "Software company",   sector: "tech",     tier: 4, cost: 700e6,  names: ["{tech} Software", "{place} Labs", "{surname} Systems"] },
+  { id: "resort",   name: "Beach resort",       sector: "property", tier: 4, cost: 1.2e9,  names: ["{place} Resort & Spa", "The {adj} Palms Resort", "{surname} Island Resort"] },
+  { id: "studio",   name: "Film studio",        sector: "fun",      tier: 4, cost: 1.6e9,  names: ["{place} Pictures", "{adj} Lantern Studios", "{surname} Films"] },
+  { id: "hospital", name: "Hospital group",     sector: "services", tier: 4, cost: 2e9,    names: ["{place} Medical Center", "{surname} Health", "{adj} Care Hospitals"] },
+  { id: "team",     name: "Pro sports team",    sector: "fun",      tier: 4, cost: 3e9,    names: ["{city} {mascot}"] },
+  { id: "port",     name: "Shipping terminal",  sector: "transport",tier: 4, cost: 4.5e9,  names: ["Port of {place}", "{surname} Marine Terminal", "{adj} Harbor Shipping"] },
+  // --- tier 5: global ---
+  { id: "park",     name: "Theme park",         sector: "fun",      tier: 5, cost: 150e9,  names: ["{adj} Kingdom", "{place} Adventure Park", "{surname}land"] },
+  { id: "airline",  name: "Airline",            sector: "transport",tier: 5, cost: 250e9,  names: ["{place} Air", "{adj} Wing Airlines", "{tech} Airways"] },
+  { id: "bank",     name: "Bank",               sector: "finance",  tier: 5, cost: 400e9,  names: ["{place} National Bank", "{surname} Trust", "{adj} Federal"] },
+  { id: "chips",    name: "Chip factory",       sector: "tech",     tier: 5, cost: 700e9,  names: ["{tech} Semiconductor", "{place} Silicon Works", "{tech} Microsystems"] },
+  { id: "rocket",   name: "Launch company",     sector: "tech",     tier: 5, cost: 1.2e12, names: ["{tech} Launch", "{place} Aerospace", "{adj} Orbit Space Co."] },
+];
+// Seconds a plain level-1 business of each tier takes to earn back its price.
+// This one table sets the pace of the whole game: bigger numbers = slower.
+const TIER_PAYBACK = [60, 300, 1500, 6000, 25000, 90000];
+// Within a tier, pricier businesses pay back a little faster (6% per step),
+// so there's a reason to save up for the expensive ones.
+for (const tier of TIER_PAYBACK.keys()) {
+  INDUSTRIES.filter(i => i.tier === tier).forEach((ind, rank) => {
+    ind.income = ind.cost / TIER_PAYBACK[tier] * (1 + 0.06 * rank);
+  });
+}
+const IND = Object.fromEntries(INDUSTRIES.map(i => [i.id, i]));
+
+// NAME PARTS for the made-up business names. All invented or generic,
+// so nothing is named after a real company.
+const NAME_PARTS = {
+  place:   ["Harbor", "Riverside", "Magnolia", "Palmetto", "Cedar Creek", "Summit", "Bayview", "Oak Street", "King Street", "Northside",
+            "Lakeshore", "Pine Ridge", "Union", "Granite", "Coastal", "Lowcountry", "Meridian", "Sunset", "Westgate", "Old Mill"],
+  surname: ["Miller", "Rivera", "Okafor", "Nguyen", "Patel", "Brooks", "Kowalski", "Haddad", "Jensen", "Romero", "Bishop", "Grant",
+            "Delgado", "Whitaker", "Chen", "Fontaine", "Mbeki", "Larsen", "O'Hara", "Castillo"],
+  first:   ["Ray", "Lou", "Dee", "Tony", "Rosa", "Gus", "Bev", "Marco", "Jo", "Sal", "Nina", "Hank", "Tasha", "Earl", "Mae"],
+  adj:     ["Golden", "Swift", "Prime", "Sparkle", "Iron", "Silver", "Lucky", "Evergreen", "Bright", "Crimson", "Liberty", "Royal", "Sterling", "True North"],
+  tech:    ["Nimbus", "Vector", "Quanta", "Helix", "Orbit", "Lattice", "Ember", "Pixel", "Cobalt", "Signal", "Arcus", "Polar"],
+  city:    ["Charleston", "Savannah", "Columbus", "Tulsa", "Boise", "Raleigh", "Omaha", "Tucson", "Richmond", "Knoxville", "Spokane",
+            "Dayton", "Reno", "Mobile", "Akron", "Madison", "Fresno", "Wichita", "Chattanooga", "Wilmington"],
+  mascot:  ["Ironclads", "Night Owls", "Tidewalkers", "Stormchasers", "Copperheads", "Comets", "Blue Herons", "Wildcards", "Foxhounds", "Riptides"],
+};
+
+// What the location of a listing is like: changes its income and its price.
+const LOCATIONS = [
+  { name: "Rough area",   inc: 0.8,  price: 0.8,  tone: "bad"  },
+  { name: "Okay spot",    inc: 1.0,  price: 1.0,  tone: ""     },
+  { name: "Good spot",    inc: 1.15, price: 1.1,  tone: "good" },
+  { name: "Prime location", inc: 1.3, price: 1.25, tone: "good" },
+];
+// Quirks: one per listing. weight = how often it comes up.
+const QUIRKS = [
+  { name: "Nothing special",          inc: 1.0,  price: 1.0,  weight: 6, tone: ""     },
+  { name: "Loyal regulars",           inc: 1.15, price: 1.05, weight: 3, tone: "good" },
+  { name: "Owner wants out fast",     inc: 1.0,  price: 0.7,  weight: 2, tone: "good" },
+  { name: "Below-market lease",       inc: 1.2,  price: 1.0,  weight: 2, tone: "good" },
+  { name: "Went viral last month",    inc: 1.4,  price: 1.35, weight: 1, tone: "good" },
+  { name: "Family-run for 40 years",  inc: 1.1,  price: 1.1,  weight: 2, tone: "good" },
+  { name: "Bad online reviews",       inc: 0.8,  price: 0.75, weight: 2, tone: "bad"  },
+  { name: "Needs new equipment",      inc: 0.75, price: 0.6,  weight: 2, tone: "bad"  },
+  { name: "Messy books",              inc: 0.9,  price: 0.95, weight: 2, tone: "bad"  },
+];
+const QUIRK_WEIGHT = QUIRKS.reduce((a, q) => a + q.weight, 0);
+
+// Prices: every level you own in an industry (a new business counts as one
+// level) makes the next one in that industry UNIT_GROWTH times pricier.
+// Expanding costs EXPAND_BASE of what a new business would; a new one costs
+// more but might come with a better location or quirk.
+const UNIT_GROWTH = 1.25;
+const EXPAND_BASE = 0.6;
+const LEVEL_MILESTONES = [10, 25, 50, 100];   // each doubles that business's income
+
+// Deals board
+const DEAL_SLOTS = 4;               // listings on the board (Scout upgrade adds one)
+const DEAL_REFRESH = 150;           // seconds until the board refreshes by itself
+const SCOUT_COOLDOWN = 45;          // seconds between free "Scout new deals" presses
+
+// Hustle (tapping)
+const STEPS_PER_JOB = 10;           // hustles to finish a job
+const JOB_BONUS = 5;                // finishing a job pays this many extra hustles
+
+// Events (the pop-up offers)
+const EVENT_MIN = 100, EVENT_MAX = 220;   // seconds between events
+const EVENT_VISIBLE = 25;                 // seconds an event waits for an answer
+const VIRAL_MULT = 10, VIRAL_SECONDS = 60;
+const BOOM_MULT = 3, BOOM_SECONDS = 45;
+const INSPECTION_SECONDS = 600;           // half income at one business if you skip the fix
+
+// Legacy (prestige): stars = floor( sqrt(everything ever earned / LEGACY_DIVISOR) )
+const LEGACY_DIVISOR = 1e9;
+const LEGACY_BONUS = 0.10;
+
+const OFFLINE_CAP_HOURS = 8;
+
+// Upgrades. kind:
+//   tapFlat / tapMult / tapPct - make hustling pay more (tapPct = share of income/sec)
+//   global     - multiplies all income
+//   price      - multiplies every purchase and expansion price (0.9 = 10% off)
+//   eventRate  - events come this much more often
+//   slots      - extra listings on the Deals board
+//   sector     - doubles one sector's income (made automatically below)
+// need = earnings this run before it shows up.
+const OWNER_UPGRADES = [
+  { id: "boots",   name: "Work Boots",        cost: 40,     kind: "tapFlat", value: 1,    need: 15,    desc: "+$1 per hustle." },
+  { id: "harder",  name: "Hustle Harder",     cost: 600,    kind: "tapMult", value: 2,    need: 200,   desc: "Hustling pays double." },
+  { id: "cards",   name: "Business Cards",    cost: 4000,   kind: "eventRate", value: 0.25, need: 1500, desc: "Offers and events come 25% more often." },
+  { id: "deleg",   name: "Delegation",        cost: 12e3,   kind: "tapPct",  value: 0.01, need: 4e3,   desc: "Each hustle also pays 1% of your income per second." },
+  { id: "nego1",   name: "Negotiator",        cost: 30e3,   kind: "price",   value: 0.9,  need: 10e3,  desc: "Everything you buy or expand costs 10% less." },
+  { id: "scout",   name: "Business Broker",   cost: 60e3,   kind: "slots",   value: 1,    need: 20e3,  desc: "One more listing on the Deals board." },
+  { id: "acct",    name: "Good Accountant",   cost: 150e3,  kind: "global",  value: 1.25, need: 50e3,  desc: "All income +25%." },
+  { id: "closer",  name: "The Closer",        cost: 2e6,    kind: "tapPct",  value: 0.02, need: 700e3, desc: "Hustling pays 2% more of your income per second." },
+  { id: "nego2",   name: "Hard Bargainer",    cost: 8e6,    kind: "price",   value: 0.9,  need: 2.5e6, desc: "Everything you buy or expand costs 10% less again." },
+  { id: "cfo",     name: "Hire a CFO",        cost: 80e6,   kind: "global",  value: 1.5,  need: 25e6,  desc: "All income +50%." },
+  { id: "press",   name: "Press Agent",       cost: 400e6,  kind: "eventRate", value: 0.25, need: 120e6, desc: "Offers and events come 25% more often." },
+  { id: "rain",    name: "Rainmaker",         cost: 3e9,    kind: "tapPct",  value: 0.03, need: 1e9,   desc: "Hustling pays 3% more of your income per second." },
+  { id: "lobby",   name: "Lobbyist",          cost: 40e9,   kind: "global",  value: 1.5,  need: 12e9,  desc: "All income +50%." },
+  { id: "media",   name: "Own a TV Network",  cost: 2e12,   kind: "global",  value: 2,    need: 6e11,  desc: "All income doubled." },
+];
+// Sector upgrades: when your businesses in one sector add up to 10, 50 and
+// 150 levels, you can buy a "double that sector" upgrade.
+const SECTOR_STEPS = [
+  { levels: 10,  label: "Know-How",  costMult: 40 },
+  { levels: 50,  label: "Network",   costMult: 4000 },
+  { levels: 150, label: "Dominance", costMult: 400000 },
+];
+const UPGRADES = [...OWNER_UPGRADES];
+for (const [sid, sector] of Object.entries(SECTORS)) {
+  const cheapest = Math.min(...INDUSTRIES.filter(i => i.sector === sid).map(i => i.cost));
+  for (const step of SECTOR_STEPS) {
+    UPGRADES.push({
+      id: `sec_${sid}_${step.levels}`, name: `${sector.name} ${step.label}`, kind: "sector", sector: sid, levels: step.levels,
+      cost: roundNice(cheapest * step.costMult),
+      desc: `${sector.name} income doubled. (Needs ${step.levels} levels across your ${sector.name.toLowerCase()} businesses.)`,
+    });
+  }
+}
+UPGRADES.sort((a, b) => a.cost - b.cost);
+const UPG = Object.fromEntries(UPGRADES.map(u => [u.id, u]));
+
+
+/* =====================================================================
+   2. GAME STATE
+   ===================================================================== */
+const SAVE_VERSION = 1;
+const LOCAL_KEY = "selfMadeTycoon.save.v1";
+
+function freshState(keepLegacy = 0, keepEarnedAll = 0, keepStats = {}) {
+  const now = Date.now();
+  return {
+    v: SAVE_VERSION,
+    cash: 0,
+    earnedRun: 0,               // earned since you last retired (unlocks tiers and upgrades)
+    earnedAll: keepEarnedAll,   // earned ever (decides Legacy stars)
+    legacy: keepLegacy,         // Legacy stars
+    biz: [],                    // businesses you own (see buyListing for the shape)
+    nextBizId: 1,
+    deals: [],                  // listings on the Deals board
+    dealsRefreshAt: 0,          // when the board refreshes by itself
+    scoutReadyAt: 0,            // when "Scout new deals" can be pressed again
+    upgrades: {},               // { upgradeId: true }
+    jobStep: 0, gig: 0,         // progress on the current hustle job
+    nextEventAt: now + 60e3,    // first event comes after a minute
+    boomUntil: 0,               // "hot economy" event: everything pays more until then
+    stats: Object.assign({ taps: 0, jobs: 0, bought: 0, events: 0, retires: 0, startedAt: now }, keepStats),
+    buyMode: "1",
+    savedAt: now,
+    lastTick: now,
+  };
+}
+let state = freshState();
+
+
+/* =====================================================================
+   3. MATH
+   ===================================================================== */
+function roundNice(n) {
+  const mag = Math.pow(10, Math.floor(Math.log10(n)) - 1);
+  return Math.round(n / mag) * mag;
+}
+const pick = list => list[Math.floor(Math.random() * list.length)];
+
+// Combine every bought upgrade of one kind
+function upgradeTotal(kind, start, combine) {
+  let total = start;
+  for (const id in state.upgrades) { const u = UPG[id]; if (u && u.kind === kind) total = combine(total, u.value); }
+  return total;
+}
+const globalMult = () => upgradeTotal("global", 1, (a, b) => a * b) * (1 + LEGACY_BONUS * state.legacy);
+const priceMult = () => upgradeTotal("price", 1, (a, b) => a * b);
+const isBoom = (now = Date.now()) => now < state.boomUntil;
+const tierUnlocked = () => TIERS.reduce((best, t, i) => state.earnedRun >= t.unlock ? i : best, 0);
+
+// Sector levels (sum of levels of every business in that sector)
+function sectorLevels(sid) {
+  let total = 0;
+  for (const b of state.biz) if (IND[b.ind].sector === sid) total += b.level;
+  return total;
+}
+function sectorMult(sid) {
+  let m = 1;
+  for (const step of SECTOR_STEPS) if (state.upgrades[`sec_${sid}_${step.levels}`]) m *= 2;
+  return m;
+}
+// Income multiplier from a business's own level: level x (2 for each milestone passed)
+function levelMult(level) {
+  let m = level;
+  for (const ms of LEVEL_MILESTONES) if (level >= ms) m *= 2;
+  return m;
+}
+// One business's income per second, without temporary effects (viral, inspection, boom)
+function bizIncome(b) {
+  const ind = IND[b.ind];
+  return ind.income * b.incMult * levelMult(b.level) * sectorMult(ind.sector) * globalMult();
+}
+// Total steady income per second (no temporary effects)
+function baseIncome() {
+  let total = 0;
+  for (const b of state.biz) total += bizIncome(b);
+  return total;
+}
+// The income you are making right this moment, with temporary effects
+function incomeNow(now = Date.now()) {
+  let total = 0;
+  for (const b of state.biz) total += bizIncome(b) * tempMult(b, now);
+  return total * (isBoom(now) ? BOOM_MULT : 1);
+}
+function tempMult(b, now) {
+  let m = 1;
+  if (now < (b.viralUntil || 0)) m *= VIRAL_MULT;
+  if (now < (b.inspectUntil || 0)) m *= 0.5;
+  return m;
+}
+// What one press of Hustle pays
+function tapValue() {
+  const flat = 1 + upgradeTotal("tapFlat", 0, (a, b) => a + b);
+  const mult = upgradeTotal("tapMult", 1, (a, b) => a * b);
+  const pct = upgradeTotal("tapPct", 0, (a, b) => a + b);
+  return (flat * mult * globalMult() + pct * baseIncome()) * (isBoom() ? BOOM_MULT : 1);
+}
+
+// How many businesses of an industry you own, and their levels added up
+const ownedOf = indId => state.biz.filter(b => b.ind === indId).length;
+function unitsOf(indId) {
+  let total = 0;
+  for (const b of state.biz) if (b.ind === indId) total += b.level;
+  return total;
+}
+// Price of a listing on the Deals board right now
+function listingPrice(l) {
+  return IND[l.ind].cost * Math.pow(UNIT_GROWTH, unitsOf(l.ind)) * l.priceMult * priceMult();
+}
+// Income per second a listing would earn at level 1 if you bought it now
+function listingIncome(l) {
+  const ind = IND[l.ind];
+  return ind.income * l.incMult * sectorMult(ind.sector) * globalMult();
+}
+// Cost to expand business b by `count` levels. Each level is UNIT_GROWTH
+// times the one before, so the total is a geometric series:
+//   first * (g^count - 1) / (g - 1)
+function expandCost(b, count) {
+  const g = UNIT_GROWTH;
+  const first = IND[b.ind].cost * EXPAND_BASE * Math.pow(g, unitsOf(b.ind)) * priceMult();
+  return first * (Math.pow(g, count) - 1) / (g - 1);
+}
+// The most levels you can afford for business b right now (0 if not even one)
+function maxExpand(b) {
+  const first = expandCost(b, 1);
+  if (state.cash < first) return 0;
+  return Math.floor(Math.log(state.cash * (UNIT_GROWTH - 1) / first + 1) / Math.log(UNIT_GROWTH));
+}
+const expandCount = b => state.buyMode === "max" ? Math.max(1, maxExpand(b)) : Number(state.buyMode);
+
+// How good a deal a listing is: income per dollar compared with a plain one
+function dealScore(l) { return l.incMult / l.priceMult; }
+function dealLabel(l) {
+  const s = dealScore(l);
+  if (s >= 1.3) return { text: "Steal", tone: "great" };
+  if (s >= 1.08) return { text: "Good deal", tone: "good" };
+  if (s >= 0.93) return { text: "Fair price", tone: "" };
+  return { text: "Overpriced", tone: "bad" };
+}
+
+// Legacy stars
+const legacyTotalFor = earned => Math.floor(Math.sqrt(earned / LEGACY_DIVISOR));
+const legacyGain = () => Math.max(0, legacyTotalFor(state.earnedAll) - state.legacy);
+const earnedForLegacy = stars => stars * stars * LEGACY_DIVISOR;
+
+function upgradeAvailable(u) {
+  if (state.upgrades[u.id]) return false;
+  if (u.kind === "sector") return sectorLevels(u.sector) >= u.levels;
+  return state.earnedRun >= u.need;
+}
+function eventInterval() {
+  const faster = upgradeTotal("eventRate", 0, (a, b) => a + b);
+  return (EVENT_MIN + Math.random() * (EVENT_MAX - EVENT_MIN)) / (1 + faster) * 1000;
+}
+
+
+/* =====================================================================
+   4. DEAL GENERATOR
+   Makes one business for sale: a real kind of business from a tier you
+   have unlocked, a made-up name, a city, a location and a quirk.
+   ===================================================================== */
+function makeName(ind) {
+  return pick(ind.names).replace(/\{(\w+)\}/g, (_, part) => pick(NAME_PARTS[part]));
+}
+function pickQuirk() {
+  let roll = Math.random() * QUIRK_WEIGHT;
+  for (let i = 0; i < QUIRKS.length; i++) { roll -= QUIRKS[i].weight; if (roll < 0) return i; }
+  return 0;
+}
+// tierBias: "top" = from your highest unlocked tier, "any" = any unlocked tier
+function makeListing(tierBias) {
+  const top = tierUnlocked();
+  let tier = top;
+  if (tierBias === "any") tier = Math.floor(Math.random() * (top + 1));
+  // Industries you own fewer levels of come up more often: a 40-level
+  // laundromat chain makes another laundromat very pricey, so the board
+  // leans toward kinds of business you haven't built up yet.
+  const choices = INDUSTRIES.filter(i => i.tier === tier);
+  const weights = choices.map(i => 1 / (1 + unitsOf(i.id)));
+  let roll = Math.random() * weights.reduce((a, w) => a + w, 0), ind = choices[0];
+  for (let k = 0; k < choices.length; k++) { roll -= weights[k]; if (roll < 0) { ind = choices[k]; break; } }
+  const loc = Math.min(3, Math.max(0, Math.round(Math.random() * 3 - 0.2)));   // "okay" and "good" most common
+  const quirk = pickQuirk();
+  const noise = 0.92 + Math.random() * 0.16;                                    // +/- 8% haggle room
+  return {
+    key: Math.random().toString(36).slice(2, 9),   // just to tell listings apart on screen
+    ind: ind.id, name: makeName(ind), city: pick(NAME_PARTS.city), loc, quirk,
+    incMult: LOCATIONS[loc].inc * QUIRKS[quirk].inc,
+    priceMult: LOCATIONS[loc].price * QUIRKS[quirk].price * noise,
+  };
+}
+// Fill the board: half from your top tier, half from any unlocked tier,
+// and always at least one thing that costs less than the cheapest... so
+// you are never stuck with nothing you could ever afford.
+function refreshDeals() {
+  const slots = DEAL_SLOTS + upgradeTotal("slots", 0, (a, b) => a + b);
+  state.deals = [];
+  for (let i = 0; i < slots; i++) state.deals.push(makeListing(i < Math.ceil(slots / 2) ? "top" : "any"));
+  state.dealsRefreshAt = Date.now() + DEAL_REFRESH * 1000;
+  dealsKey = "";
+}
+
+
+/* =====================================================================
+   5. ACTIONS
+   ===================================================================== */
+function addCash(amount) {
+  state.cash += amount;
+  state.earnedRun += amount;
+  state.earnedAll += amount;
+}
+
+function hustle(fromX, fromY) {
+  const v = tapValue();
+  addCash(v);
+  state.stats.taps++;
+  state.jobStep++;
+  let label = "+" + money(v);
+  if (state.jobStep >= STEPS_PER_JOB) {
+    const bonus = v * JOB_BONUS;
+    addCash(bonus);
+    state.stats.jobs++;
+    state.jobStep = 0;
+    state.gig = Math.floor(Math.random() * 4);
+    label = "Job done! +" + money(v + bonus);
+  }
+  floatText(label, fromX, fromY);
+  coins.push({ t: 0, x: Math.random() });
+  dirty = true;
+}
+
+// Buy the listing in slot i of the Deals board
+function buyListing(i) {
+  const l = state.deals[i];
+  if (!l) return false;
+  const price = listingPrice(l);
+  if (price > state.cash) { toast("Not enough cash yet"); return false; }
+  state.cash -= price;
+  state.biz.push({
+    id: state.nextBizId++, ind: l.ind, name: l.name, city: l.city, loc: l.loc, quirk: l.quirk,
+    incMult: l.incMult, level: 1, paid: price, viralUntil: 0, inspectUntil: 0,
+  });
+  state.stats.bought++;
+  state.deals[i] = makeListing(i < Math.ceil(state.deals.length / 2) ? "top" : "any");   // a new listing takes its place
+  dealsKey = "";
+  toast(`You bought ${l.name}`);
+  dirty = true;
+  render(true);
+  return true;
+}
+
+function expandBiz(id) {
+  const b = state.biz.find(x => x.id === id);
+  if (!b) return false;
+  const count = expandCount(b);
+  const cost = expandCost(b, count);
+  if (count < 1 || cost > state.cash) { toast("Not enough cash yet"); return false; }
+  const before = b.level;
+  state.cash -= cost;
+  b.level += count;
+  b.paid += cost;
+  const hit = LEVEL_MILESTONES.find(m => before < m && b.level >= m);
+  if (hit) toast(`${b.name} reached level ${hit}: its income doubled!`);
+  dirty = true;
+  render(true);
+  return true;
+}
+
+function buyUpgrade(id) {
+  const u = UPG[id];
+  if (!u || !upgradeAvailable(u)) return false;
+  if (u.cost > state.cash) { toast("Not enough cash yet"); return false; }
+  state.cash -= u.cost;
+  state.upgrades[id] = true;
+  if (u.kind === "slots") refreshDeals();
+  dirty = true;
+  render(true);
+  return true;
+}
+
+function scoutDeals() {
+  const wait = Math.ceil((state.scoutReadyAt - Date.now()) / 1000);
+  if (wait > 0) { toast(`Your broker needs ${wait}s to find more`); return; }
+  refreshDeals();
+  state.scoutReadyAt = Date.now() + SCOUT_COOLDOWN * 1000;
+  dirty = true;
+  render(true);
+}
+
+// ---------- Events ----------
+// An event is a little story with one or two choices. `options` are
+// { label, yes (the green one), act() }. Ignoring it is always safe.
+let activeEvent = null;        // the event on screen (not saved)
+let eventShownAt = 0;
+
+function makeEvent() {
+  const owned = state.biz;
+  const inc = baseIncome();
+  const someBiz = () => pick(owned);
+  const types = [];
+  if (owned.length) {
+    types.push(() => {           // someone wants to buy one of your businesses
+      const b = someBiz();
+      const offer = Math.max(b.paid * (1.6 + Math.random() * 1.4), bizIncome(b) * 900);
+      return { title: "Buyout offer", text: `A buyer wants ${b.name} and offers ${money(offer)} cash. It earns ${money(bizIncome(b))}/sec for you now.`,
+        options: [
+          { label: `Sell for ${money(offer)}`, yes: true, act: () => {
+              state.biz = state.biz.filter(x => x !== b); addCash(offer);
+              showModal("Sold", `${b.name} has a new owner.`, "+" + money(offer)); } },
+          { label: "Keep it", act: () => {} },
+        ] };
+    });
+    types.push(() => {           // one business goes viral
+      const b = someBiz();
+      return { title: "Gone viral", text: `A video about ${b.name} blew up overnight. Lines out the door.`,
+        options: [{ label: `Cash in: ${VIRAL_MULT}x for ${VIRAL_SECONDS}s`, yes: true, act: () => {
+          b.viralUntil = Date.now() + VIRAL_SECONDS * 1000; toast(`${b.name} earns ${VIRAL_MULT}x for ${VIRAL_SECONDS} seconds`); } }] };
+    });
+    types.push(() => {           // inspection: pay now or lose half its income for a while
+      const b = someBiz();
+      const fix = Math.max(25, bizIncome(b) * 120);
+      return { title: "Surprise inspection", text: `An inspector flagged problems at ${b.name}. Fix them now, or it runs at half income for ${INSPECTION_SECONDS / 60} minutes.`,
+        options: [
+          { label: `Fix it: ${money(fix)}`, yes: true, act: () => {
+              if (state.cash < fix) { b.inspectUntil = Date.now() + INSPECTION_SECONDS * 1000; toast("Couldn't afford the fix: half income for now"); return; }
+              state.cash -= fix; toast("Fixed. The inspector signed off."); } },
+          { label: "Let it slide", act: () => { b.inspectUntil = Date.now() + INSPECTION_SECONDS * 1000; } },
+        ] };
+    });
+    types.push(() => {           // risky partner pitch: double or nothing
+      const stake = Math.max(50, inc * 90);
+      return { title: "Partner pitch", text: `An old friend wants ${money(stake)} for a new venture. "Can't miss," they say. (It's a coin flip: win 3x or lose it.)`,
+        options: [
+          { label: `Back it: ${money(stake)}`, yes: true, act: () => {
+              if (state.cash < stake) { toast("Not enough cash to back it"); return; }
+              state.cash -= stake;
+              if (Math.random() < 0.5) { addCash(stake * 3); showModal("It worked!", "The venture took off and paid you back three times over.", "+" + money(stake * 3)); }
+              else showModal("It flopped", "The venture folded. Lesson learned.", "-" + money(stake)); } },
+          { label: "Pass", act: () => {} },
+        ] };
+    });
+    types.push(() => ({          // the whole economy runs hot for a bit
+      title: "Hot economy", text: "Everyone's spending. Every business and every hustle pays more for a while.",
+      options: [{ label: `Ride it: ${BOOM_MULT}x for ${BOOM_SECONDS}s`, yes: true, act: () => {
+        state.boomUntil = Math.max(state.boomUntil, Date.now()) + BOOM_SECONDS * 1000; } }] }));
+  }
+  types.push(() => {             // free money (always possible, even with no businesses)
+    const pay = Math.max(tapValue() * 40, inc * 120);
+    return { title: "Lucky break", text: "A customer you helped years ago sends a thank-you check.",
+      options: [{ label: `Cash it: ${money(pay)}`, yes: true, act: () => { addCash(pay); } }] };
+  });
+  return pick(types)();
+}
+function updateEvent(now) {
+  if (!activeEvent && now >= state.nextEventAt && !modalOpen()) {
+    activeEvent = makeEvent();
+    eventShownAt = now;
+    showEvent();
+  }
+  if (activeEvent && now - eventShownAt > EVENT_VISIBLE * 1000) closeEvent();   // ignored: nothing happens
+}
+function chooseEvent(i) {
+  if (!activeEvent) return;
+  const opt = activeEvent.options[i];
+  if (!opt) return;
+  state.stats.events++;
+  opt.act();
+  closeEvent();
+  dirty = true;
+  render(true);
+}
+function closeEvent() {
+  activeEvent = null;
+  state.nextEventAt = Date.now() + eventInterval();
+  $("event").hidden = true;
+}
+
+// Retire: keep Legacy and lifetime earnings, lose everything else
+function retire() {
+  const gain = legacyGain();
+  if (gain < 1) return;
+  const stats = Object.assign({}, state.stats, { retires: state.stats.retires + 1 });
+  const mode = state.buyMode;
+  state = freshState(state.legacy + gain, state.earnedAll, stats);
+  state.buyMode = mode;
+  refreshDeals();
+  if (activeEvent) closeEvent();
+  rebuildLists();
+  saveNow();
+  showModal("Retired!", `You start over with ${state.legacy} Legacy stars. Everything earns ${Math.round(LEGACY_BONUS * 100 * state.legacy)}% more.`, "★ " + state.legacy);
+}
+
+
+/* =====================================================================
+   6. TIME
+   ===================================================================== */
+// Overlap in seconds between [from, to] and [from, until]
+const overlap = (from, to, until) => Math.max(0, (Math.min(to, until) - from) / 1000);
+
+// Add the income earned between two moments, counting viral spikes,
+// inspections and booms that end part way through.
+function earnBetween(from, to) {
+  const seconds = Math.max(0, (to - from) / 1000);
+  if (!seconds) return 0;
+  let total = 0, boomExtra = 0;
+  for (const b of state.biz) {
+    const inc = bizIncome(b);
+    let earned = inc * seconds;
+    earned += inc * (VIRAL_MULT - 1) * overlap(from, to, b.viralUntil || 0);
+    earned -= inc * 0.5 * overlap(from, to, b.inspectUntil || 0);
+    total += earned;
+  }
+  boomExtra = baseIncome() * (BOOM_MULT - 1) * overlap(from, to, state.boomUntil);
+  total += boomExtra;
+  addCash(total);
+  return total;
+}
+
+function catchUp(showMessage) {
+  const now = Date.now();
+  const away = now - state.lastTick;
+  if (away <= 0) { state.lastTick = now; return; }
+  const capped = Math.min(away, OFFLINE_CAP_HOURS * 3600e3);
+  const earned = earnBetween(state.lastTick, state.lastTick + capped);
+  state.lastTick = now;
+  if (state.nextEventAt < now) state.nextEventAt = now + 20e3;
+  if (now >= state.dealsRefreshAt) refreshDeals();
+  if (showMessage && away > 60e3 && earned > 0) {
+    const capNote = away > capped ? ` (pay is capped at ${OFFLINE_CAP_HOURS} hours)` : "";
+    showModal("While you were out", `You were gone ${duration(away)}${capNote}. Your businesses kept the lights on.`, "+" + money(earned));
+  }
+}
+
+let lastFrame = performance.now(), lastSlowRender = 0;
+function frame(nowPerf) {
+  const dt = Math.min(0.25, (nowPerf - lastFrame) / 1000);
+  lastFrame = nowPerf;
+  const now = Date.now();
+  const gap = now - state.lastTick;
+  if (gap > 60e3) catchUp(true);
+  else if (gap > 0) { earnBetween(state.lastTick, now); state.lastTick = now; }
+  if (now >= state.dealsRefreshAt) refreshDeals();
+  updateEvent(now);
+  render(false);
+  if (nowPerf - lastSlowRender > 250) { lastSlowRender = nowPerf; render(true); }
+  drawSkyline(dt);
+  pollGamepads();
+  requestAnimationFrame(frame);
+}
+
+
+/* =====================================================================
+   7. SAVING  (same system as Paper Jam Tycoon)
+   Always saved in this browser. If you're signed in to Claude, also
+   saved to your account so the game follows you between devices.
+   The newest save wins; a device in the background never pushes.
+   ===================================================================== */
+let dirty = false;
+let saveDoc = null, cloudWriting = false, cloudAgain = false, finalSave = false;
+const DEVICE_ID = (() => {
+  try {
+    let id = localStorage.getItem("selfMadeTycoon.device");
+    if (!id) { id = Math.random().toString(36).slice(2); localStorage.setItem("selfMadeTycoon.device", id); }
+    return id;
+  } catch { return Math.random().toString(36).slice(2); }
+})();
+
+const encodeSave = s => btoa(unescape(encodeURIComponent(JSON.stringify(s))));
+const decodeSave = text => validState(JSON.parse(decodeURIComponent(escape(atob(text.trim())))));
+
+// Check a loaded save and repair anything missing or broken, so a bad
+// save can never crash the game.
+function validState(s) {
+  if (!s || typeof s !== "object" || typeof s.cash !== "number" || !Array.isArray(s.biz)) throw new Error("not a save");
+  const base = freshState();
+  const out = Object.assign(base, s);
+  out.stats = Object.assign(base.stats, s.stats || {});
+  out.biz = s.biz.filter(b => b && IND[b.ind]).map(b => ({
+    id: Number(b.id) || 0, ind: b.ind, name: String(b.name || IND[b.ind].name), city: String(b.city || ""),
+    loc: Math.min(3, Math.max(0, b.loc | 0)), quirk: Math.min(QUIRKS.length - 1, Math.max(0, b.quirk | 0)),
+    incMult: Number.isFinite(b.incMult) && b.incMult > 0 ? b.incMult : 1,
+    level: Math.max(1, Math.floor(Number(b.level) || 1)), paid: Number(b.paid) || 0,
+    viralUntil: Number(b.viralUntil) || 0, inspectUntil: Number(b.inspectUntil) || 0,
+  }));
+  out.nextBizId = Math.max(Number(s.nextBizId) || 1, ...out.biz.map(b => b.id + 1), 1);
+  out.deals = Array.isArray(s.deals) ? s.deals.filter(l => l && IND[l.ind] && Number.isFinite(l.priceMult) && Number.isFinite(l.incMult)) : [];
+  out.upgrades = {};
+  for (const id in (s.upgrades || {})) if (UPG[id]) out.upgrades[id] = true;
+  for (const k of ["cash", "earnedRun", "earnedAll", "legacy", "savedAt", "lastTick", "nextEventAt", "boomUntil", "dealsRefreshAt", "scoutReadyAt"]) {
+    if (!Number.isFinite(out[k]) || out[k] < 0) out[k] = base[k];
+  }
+  if (!["1", "10", "max"].includes(out.buyMode)) out.buyMode = "1";
+  return out;
+}
+function readLocal() {
+  try { const raw = localStorage.getItem(LOCAL_KEY); return raw ? validState(JSON.parse(raw)) : null; } catch { return null; }
+}
+function saveNow() {
+  state.savedAt = Date.now();
+  dirty = false;
+  try { localStorage.setItem(LOCAL_KEY, JSON.stringify(state)); } catch { /* blocked: account save still works */ }
+  saveCloud();
+}
+async function saveCloud() {
+  if (!saveDoc) return;
+  if (document.visibilityState !== "visible" && !finalSave) return;
+  if (cloudWriting) { cloudAgain = true; return; }
+  cloudWriting = true;
+  try {
+    await saveDoc.set({ save: JSON.stringify(state), savedAt: state.savedAt, device: DEVICE_ID });
+    setSaveLabel("Saved to your account");
+  } catch { setSaveLabel("Saving on this device"); }
+  finally { cloudWriting = false; if (cloudAgain) { cloudAgain = false; saveCloud(); } }
+}
+function adopt(newState, message) {
+  state = newState;
+  catchUp(false);
+  if (!state.deals.length) refreshDeals();
+  rebuildLists();
+  if (message) toast(message);
+}
+async function connectCloud() {
+  if (!window.claude?.use) return;
+  try {
+    const db = await claude.use("db");
+    const user = await claude.use("user");
+    if (!db || !user) { setSaveLabel("Saving on this device"); return; }
+    saveDoc = db.collection("data/users/" + await user.id()).doc("tycoon");   // private to you
+    const remote = parseRemote(await withTimeout(saveDoc.get(), 10000));
+    if (remote && remote.savedAt > state.savedAt) adopt(remote, "Loaded your save from your account");
+    else saveNow();
+    setSaveLabel("Saved to your account");
+    saveDoc.onSnapshot(s => {
+      const data = s && (typeof s.data === "function" ? s.data() : s);
+      if (!data || data.device === DEVICE_ID) return;
+      const incoming = parseRemote(s);
+      if (incoming && incoming.savedAt > state.savedAt) adopt(incoming, "Picked up your progress from another device");
+    }, () => {});
+  } catch { setSaveLabel("Saving on this device"); }
+}
+function parseRemote(snap) {
+  try {
+    const data = snap && (typeof snap.data === "function" ? snap.data() : snap);
+    if (!data || !data.save) return null;
+    const s = validState(JSON.parse(data.save));
+    s.savedAt = data.savedAt || s.savedAt;
+    return s;
+  } catch { return null; }
+}
+const withTimeout = (p, ms) => Promise.race([p, new Promise((_, no) => setTimeout(() => no(new Error("timeout")), ms))]);
+function setSaveLabel(text) { $("saveState").textContent = text; }
+
+setInterval(() => { if (dirty || Date.now() - state.savedAt > 30e3) saveNow(); }, 30e3);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") { finalSave = true; saveNow(); finalSave = false; } });
+window.addEventListener("pagehide", () => { finalSave = true; saveNow(); finalSave = false; });
+
+
+/* =====================================================================
+   8. SCREEN
+   ===================================================================== */
+const $ = id => document.getElementById(id);
+
+const SUFFIXES = ["", "K", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No", "Dc"];
+function short(n) {
+  if (!Number.isFinite(n)) return "∞";
+  const neg = n < 0; n = Math.abs(n);
+  let out;
+  if (n < 10) out = n.toFixed(n > 0 && n < 1 ? 2 : 1).replace(/\.0$/, "");
+  else if (n < 1e4) out = Math.floor(n).toLocaleString("en-US");
+  else {
+    const tier = Math.floor(Math.log10(n) / 3);
+    if (tier >= SUFFIXES.length) out = n.toExponential(2);
+    else { const s = n / Math.pow(1000, tier); out = s.toFixed(s < 10 ? 2 : s < 100 ? 1 : 0) + SUFFIXES[tier]; }
+  }
+  return (neg ? "-" : "") + out;
+}
+const money = n => (n < 0 ? "-$" + short(-n) : "$" + short(n));
+function duration(ms) {
+  const s = Math.floor(ms / 1000), m = Math.floor(s / 60), h = Math.floor(m / 60), d = Math.floor(h / 24);
+  if (d > 0) return `${d}d ${h % 24}h`;
+  if (h > 0) return `${h}h ${m % 60}m`;
+  if (m > 0) return `${m}m ${s % 60}s`;
+  return `${s}s`;
+}
+// Two-letter logo from a business name ("Harbor Laundromat" -> "HL")
+function initials(name) {
+  const words = name.replace(/^The /, "").split(/[\s&.-]+/).filter(w => /^[A-Za-z]/.test(w));
+  return ((words[0] || "?")[0] + (words[1] ? words[1][0] : (words[0] || "?")[1] || "")).toUpperCase();
+}
+function logoHtml(name, sid) {
+  // circle for small tiers, rounded square for the rest: just variety
+  return `<div class="logo" style="background:${SECTORS[sid].color}; border-radius:${name.length % 2 ? "50%" : "10px"}">${esc(initials(name))}</div>`;
+}
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+// ---------- Deals ----------
+let dealsKey = "";
+function updateDeals() {
+  const list = $("dealList");
+  const key = state.deals.map(l => l.key).join(",");
+  if (key !== dealsKey) {
+    dealsKey = key;
+    list.innerHTML = "";
+    state.deals.forEach((l, i) => {
+      const ind = IND[l.ind], deal = dealLabel(l), locn = LOCATIONS[l.loc], q = QUIRKS[l.quirk];
+      const row = document.createElement("div");
+      row.className = "biz";
+      row.innerHTML = `${logoHtml(l.name, ind.sector)}
+        <div><h3 class="cond">${esc(l.name)}</h3><div class="sub">${esc(ind.name)} · ${esc(l.city)} · ${SECTORS[ind.sector].name}</div></div>
+        <button class="buy" id="deal-${i}"><span class="pr"></span><small>buy it</small></button>
+        <div class="chips"><span class="chip ${deal.tone}">${deal.text}</span><span class="chip ${locn.tone}">${locn.name}</span>${l.quirk ? `<span class="chip ${q.tone}">${esc(q.name)}</span>` : ""}</div>
+        <div class="line"></div>`;
+      row.querySelector(".buy").addEventListener("click", () => buyListing(i));
+      list.appendChild(row);
+    });
+  }
+  let affordable = 0;
+  state.deals.forEach((l, i) => {
+    const row = list.children[i];
+    if (!row) return;
+    const price = listingPrice(l), inc = listingIncome(l), can = price <= state.cash;
+    if (can) affordable++;
+    row.classList.toggle("affordable", can);
+    const btn = row.querySelector(".buy");
+    btn.setAttribute("aria-disabled", String(!can));
+    btn.querySelector(".pr").textContent = money(price);
+    const owned = ownedOf(l.ind);
+    row.querySelector(".line").textContent = `Earns ${money(inc)}/sec · pays for itself in ${duration(price / inc * 1000)}` + (owned ? ` · you own ${owned} (${unitsOf(l.ind)} levels)` : "");
+  });
+  $("dealBadge").hidden = affordable === 0;
+  $("dealBadge").textContent = affordable;
+  const left = Math.max(0, state.dealsRefreshAt - Date.now());
+  $("dealsTimer").textContent = `New listings in ${duration(left)}`;
+  const wait = Math.ceil((state.scoutReadyAt - Date.now()) / 1000);
+  $("scout").setAttribute("aria-disabled", String(wait > 0));
+  $("scout").textContent = wait > 0 ? `Scout again in ${wait}s` : "Scout new deals";
+  const top = tierUnlocked();
+  const next = TIERS[top + 1];
+  $("nextTier").textContent = next
+    ? `Bigger businesses unlock at ${money(next.unlock)} earned (you're at ${money(state.earnedRun)}): ` +
+      INDUSTRIES.filter(i => i.tier === top + 1).map(i => i.name.toLowerCase()).join(", ") + "."
+    : "Every kind of business is unlocked. Time to own them all.";
+}
+
+// ---------- Empire (businesses you own) ----------
+let empireKey = "";
+function updateEmpire() {
+  const list = $("empireList");
+  // biggest earners first
+  const sorted = [...state.biz].sort((a, b) => bizIncome(b) - bizIncome(a));
+  const key = sorted.map(b => b.id).join(",");
+  if (key !== empireKey) {
+    empireKey = key;
+    list.innerHTML = "";
+    if (!sorted.length) list.innerHTML = `<p class="note">You don't own anything yet. Hustle for some cash, then buy something cheap from the Deals tab.</p>`;
+    for (const b of sorted) {
+      const ind = IND[b.ind];
+      const row = document.createElement("div");
+      row.className = "biz";
+      row.dataset.id = b.id;
+      row.innerHTML = `${logoHtml(b.name, ind.sector)}
+        <div><h3 class="cond">${esc(b.name)} <span class="lvl" style="font-family:var(--mono);font-size:16px;color:var(--muted)"></span></h3>
+        <div class="sub">${esc(ind.name)} · ${esc(b.city)} · ${esc(LOCATIONS[b.loc].name)}${b.quirk ? " · " + esc(QUIRKS[b.quirk].name) : ""}</div></div>
+        <button class="buy" id="exp-${b.id}"><span class="pr"></span><small class="ct"></small></button>
+        <div class="chips"></div><div class="line"></div>`;
+      row.querySelector(".buy").addEventListener("click", () => expandBiz(b.id));
+      list.appendChild(row);
+    }
+  }
+  const now = Date.now();
+  for (const row of list.querySelectorAll(".biz")) {
+    const b = state.biz.find(x => x.id === Number(row.dataset.id));
+    if (!b) continue;
+    const count = expandCount(b), cost = expandCost(b, count);
+    const can = cost <= state.cash && (state.buyMode !== "max" || maxExpand(b) > 0);
+    row.classList.toggle("affordable", can);
+    row.querySelector(".lvl").textContent = "Lv " + b.level;
+    const next = LEVEL_MILESTONES.find(m => m > b.level);
+    row.querySelector(".line").textContent = `${money(bizIncome(b) * tempMult(b, now))}/sec` + (next ? ` · income doubles at level ${next}` : " · fully grown");
+    const chips = [];
+    if (now < b.viralUntil) chips.push(`<span class="chip great">Viral ${Math.ceil((b.viralUntil - now) / 1000)}s</span>`);
+    if (now < b.inspectUntil) chips.push(`<span class="chip bad">Half income ${duration(b.inspectUntil - now)}</span>`);
+    const chipBox = row.querySelector(".chips");
+    const html = chips.join("");
+    if (chipBox.innerHTML !== html) chipBox.innerHTML = html;
+    const btn = row.querySelector(".buy");
+    btn.setAttribute("aria-disabled", String(!can));
+    btn.querySelector(".pr").textContent = money(cost);
+    btn.querySelector(".ct").textContent = `expand +${count}`;
+  }
+  $("empireSummary").textContent = state.biz.length
+    ? `${state.biz.length} business${state.biz.length > 1 ? "es" : ""} earning ${money(incomeNow())}/sec. Expanding adds a level; levels 10, 25, 50 and 100 each double that business.`
+    : "";
+}
+
+// ---------- Upgrades ----------
+let upgradeKey = "";
+function updateUpgrades() {
+  const offered = UPGRADES.filter(upgradeAvailable);
+  const key = offered.map(u => u.id).join(",");
+  const affordable = offered.filter(u => u.cost * 1 <= state.cash).length;
+  $("upgBadge").hidden = affordable === 0;
+  $("upgBadge").textContent = affordable;
+  const pane = $("pane-upg");
+  if (key !== upgradeKey) {
+    upgradeKey = key;
+    pane.innerHTML = "";
+    if (!offered.length) pane.innerHTML = `<p class="note">No upgrades on offer yet. They show up as you earn more, and as each sector's businesses gain levels.</p>`;
+    for (const u of offered) {
+      const row = document.createElement("div");
+      row.className = "biz";
+      row.dataset.id = u.id;
+      const color = u.kind === "sector" ? SECTORS[u.sector].color : "var(--ink)";
+      row.innerHTML = `<div class="logo" style="background:${color};border-radius:10px">${u.kind === "sector" ? "x2" : "★"}</div>
+        <div><h3 class="cond"></h3><div class="sub"></div></div>
+        <button class="buy" id="up-${u.id}"><span class="pr"></span><small>buy</small></button>`;
+      row.querySelector("h3").textContent = u.name;
+      row.querySelector(".sub").textContent = u.desc;
+      row.querySelector(".pr").textContent = money(u.cost);
+      row.querySelector(".buy").addEventListener("click", () => buyUpgrade(u.id));
+      pane.appendChild(row);
+    }
+    const note = document.createElement("p");
+    note.className = "note";
+    note.textContent = `${Object.keys(state.upgrades).length} of ${UPGRADES.length} upgrades bought.`;
+    pane.appendChild(note);
+  }
+  for (const row of pane.querySelectorAll(".biz")) {
+    const can = UPG[row.dataset.id].cost <= state.cash;
+    row.classList.toggle("affordable", can);
+    row.querySelector(".buy").setAttribute("aria-disabled", String(!can));
+  }
+}
+
+function updateRetire() {
+  const gain = legacyGain();
+  $("legNow").textContent = state.legacy;
+  $("legGain").textContent = gain;
+  $("legPct").textContent = Math.round(LEGACY_BONUS * 100) + "%";
+  $("legNext").textContent = `Next star at ${money(earnedForLegacy(legacyTotalFor(state.earnedAll) + 1))} earned in total. You've earned ${money(state.earnedAll)}.`;
+  const btn = $("retire");
+  btn.setAttribute("aria-disabled", String(gain < 1));
+  if (btn.dataset.armed !== "1") btn.textContent = gain < 1 ? "Not worth retiring yet" : `Retire for ${gain} star${gain > 1 ? "s" : ""}`;
+}
+
+function updateStats() {
+  const items = [
+    ["Cash", money(state.cash)], ["Earned this run", money(state.earnedRun)], ["Earned ever", money(state.earnedAll)],
+    ["Income", money(incomeNow()) + "/sec"], ["Businesses", state.biz.length],
+    ["Legacy", `★ ${state.legacy} (+${Math.round(state.legacy * LEGACY_BONUS * 100)}%)`],
+    ["Hustles", state.stats.taps.toLocaleString("en-US")], ["Jobs finished", state.stats.jobs.toLocaleString("en-US")],
+    ["Businesses bought", state.stats.bought], ["Events answered", state.stats.events], ["Times retired", state.stats.retires],
+    ["Playing since", new Date(state.stats.startedAt).toLocaleDateString()],
+  ];
+  $("stats").innerHTML = items.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
+}
+
+function render(full) {
+  const now = Date.now();
+  $("cash").textContent = money(state.cash);
+  $("ips").textContent = money(incomeNow(now)) + "/sec";
+  $("tapv").textContent = money(tapValue()) + " per hustle";
+  $("owned").textContent = state.biz.length + (state.biz.length === 1 ? " business" : " businesses");
+  const boom = Math.ceil((state.boomUntil - now) / 1000);
+  $("boom").textContent = boom > 0 ? `HOT ECONOMY ${BOOM_MULT}x · ${duration(state.boomUntil - now)}` : "";
+  const tier = tierUnlocked();
+  $("rank").textContent = TIERS[tier].rank.toUpperCase() + (state.legacy ? `  ·  ★ ${state.legacy}` : "");
+  $("jobText").textContent = TIERS[tier].gigs[state.gig % 4];
+  $("jobBar").style.width = (state.jobStep / STEPS_PER_JOB * 100) + "%";
+  if (activeEvent) $("evLeft") && ($("evLeft").textContent = `${Math.ceil(EVENT_VISIBLE - (now - eventShownAt) / 1000)}s`);
+  for (const b of document.querySelectorAll("#buymode button")) b.setAttribute("aria-pressed", String(b.dataset.mode === state.buyMode));
+  if (!full) return;
+  updateDeals();
+  updateEmpire();
+  updateUpgrades();
+  updateRetire();
+  if ($("pane-set").classList.contains("on")) updateStats();
+}
+function rebuildLists() { dealsKey = empireKey = upgradeKey = ""; render(true); }
+
+function showEvent() {
+  const ev = activeEvent;
+  $("evTitle").textContent = ev.title;
+  $("evText").textContent = ev.text;
+  const opts = $("evOpts");
+  opts.innerHTML = "";
+  ev.options.forEach((o, i) => {
+    const b = document.createElement("button");
+    b.textContent = o.label;
+    b.id = "ev-opt-" + i;
+    if (o.yes) b.className = "yes";
+    b.addEventListener("click", () => chooseEvent(i));
+    opts.appendChild(b);
+  });
+  const left = document.createElement("span");
+  left.className = "left"; left.id = "evLeft";
+  opts.appendChild(left);
+  $("event").hidden = false;
+}
+
+function floatText(text, x, y) {
+  const box = $("floats").getBoundingClientRect();
+  const btn = $("hustle").getBoundingClientRect();
+  const el = document.createElement("div");
+  el.className = "float";
+  el.textContent = text;
+  const px = (x ?? btn.left + btn.width / 2) - box.left + (Math.random() * 60 - 30);
+  const py = (y ?? btn.top) - box.top - 24;
+  el.style.left = Math.max(4, Math.min(box.width - 170, px - 40)) + "px";
+  el.style.top = py + "px";
+  $("floats").appendChild(el);
+  setTimeout(() => el.remove(), 1000);
+}
+let toastTimer = 0;
+function toast(text) {
+  const t = $("toast");
+  t.textContent = text; t.classList.add("on");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("on"), 2400);
+}
+function showModal(title, text, amount) {
+  $("modalTitle").textContent = title;
+  $("modalText").textContent = text;
+  $("modalAmount").textContent = amount || "";
+  $("modalBack").classList.add("on");
+  $("modalOk").focus();
+}
+const modalOpen = () => $("modalBack").classList.contains("on");
+
+// ---------- The skyline: one building per business you own ----------
+const canvas = $("skyline"), ctx = canvas.getContext("2d");
+const coins = [];          // little coins that fly up when you hustle
+let skyTime = 0;
+// A fixed pseudo-random number from a seed, so each building keeps the same windows
+const seeded = n => { const x = Math.sin(n * 127.1) * 43758.5453; return x - Math.floor(x); };
+function drawSkyline(dt) {
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (!w || !h) return;
+  if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  skyTime += dt;
+  // night sky
+  const g = ctx.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, "#0b1120"); g.addColorStop(1, "#24304d");
+  ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+  for (let i = 0; i < 40; i++) {                         // stars
+    ctx.fillStyle = `rgba(255,255,255,${0.25 + 0.35 * seeded(i + Math.floor(skyTime / 3))})`;
+    ctx.fillRect(seeded(i) * w, seeded(i + 99) * h * 0.55, 1.5, 1.5);
+  }
+  const ground = h - 10;
+  ctx.fillStyle = "#0a0f1b"; ctx.fillRect(0, ground, w, 10);
+  if (!state.biz.length) {
+    const msg = "Your skyline starts with your first business.";
+    let size = 14;
+    ctx.font = `${size}px 'IBM Plex Mono', monospace`;
+    while (ctx.measureText(msg).width > w - 20 && size > 9) ctx.font = `${--size}px 'IBM Plex Mono', monospace`;   // shrink to fit
+    ctx.fillStyle = "#8794ad"; ctx.textAlign = "center";
+    ctx.fillText(msg, w / 2, h / 2);
+  } else {
+    // building width shrinks when you own a lot, so they always fit
+    const n = state.biz.length;
+    const slot = Math.min(34, (w - 16) / n);
+    const startX = (w - slot * n) / 2;
+    const tallest = h - 24;
+    state.biz.forEach((b, i) => {
+      const ind = IND[b.ind];
+      const bw = Math.max(2, slot * (0.55 + ind.tier * 0.07));
+      const bh = Math.min(tallest, (0.18 + ind.tier * 0.13) * tallest + Math.min(b.level, 100) / 100 * tallest * 0.25);
+      const x = startX + i * slot + (slot - bw) / 2, y = ground - bh;
+      ctx.fillStyle = SECTORS[ind.sector].color;
+      ctx.globalAlpha = 0.85;
+      ctx.fillRect(x, y, bw, bh);
+      ctx.globalAlpha = 1;
+      if (bw >= 6) {                                   // lit windows, twinkling slowly
+        ctx.fillStyle = "#ffe6a8";
+        for (let wy = y + 4; wy < ground - 4; wy += 6) {
+          for (let wx = x + 2; wx < x + bw - 3; wx += 5) {
+            if (seeded(b.id * 31 + wx * 7 + wy * 13 + Math.floor(skyTime / 4)) > 0.55) ctx.fillRect(wx, wy, 2, 3);
+          }
+        }
+      }
+      if (Date.now() < (b.viralUntil || 0)) {           // viral: a beacon on the roof
+        ctx.fillStyle = Math.floor(skyTime * 4) % 2 ? "#f2b84b" : "#fff";
+        ctx.fillRect(x + bw / 2 - 2, y - 6, 4, 6);
+      }
+    });
+  }
+  // coins from hustling
+  for (const c of coins) {
+    c.t += dt;
+    ctx.fillStyle = "#f2b84b";
+    ctx.beginPath(); ctx.arc(w * (0.3 + c.x * 0.4), ground - c.t * 120, 4, 0, Math.PI * 2); ctx.fill();
+  }
+  while (coins.length && coins[0].t > 1) coins.shift();
+}
+
+
+/* =====================================================================
+   9. CONTROLS
+   Keyboard: Space = hustle, arrows = move between buttons, Enter = press,
+             1-5 = tabs, O = take the offer (first event choice).
+   Controller: A = press, X = hustle, B = take the offer, LB/RB = tabs,
+               Y = expand amount, D-pad/left stick = move between buttons.
+   ===================================================================== */
+$("hustle").addEventListener("pointerdown", e => {
+  e.preventDefault();
+  if (modalOpen()) return;
+  hustle(e.clientX, e.clientY);
+  $("hustle").classList.add("pressed");
+});
+for (const ev of ["pointerup", "pointerleave", "pointercancel"]) $("hustle").addEventListener(ev, () => $("hustle").classList.remove("pressed"));
+$("hustle").addEventListener("click", e => { if (e.detail === 0) hustle(); });   // Enter/Space on the focused button
+$("modalOk").addEventListener("click", () => $("modalBack").classList.remove("on"));
+$("scout").addEventListener("click", scoutDeals);
+
+const TAB_ORDER = ["deals", "empire", "upg", "retire", "set"];
+function showTab(name) {
+  for (const tab of document.querySelectorAll(".tab")) tab.setAttribute("aria-selected", String(tab.dataset.pane === name));
+  for (const id of TAB_ORDER) $("pane-" + id).classList.toggle("on", id === name);
+  render(true);
+}
+for (const tab of document.querySelectorAll(".tab")) tab.addEventListener("click", () => showTab(tab.dataset.pane));
+const cycleTab = step => {
+  const i = TAB_ORDER.findIndex(id => $("pane-" + id).classList.contains("on"));
+  showTab(TAB_ORDER[(i + step + TAB_ORDER.length) % TAB_ORDER.length]);
+};
+function setBuyMode(mode) { state.buyMode = mode; render(true); }
+for (const b of document.querySelectorAll("#buymode button")) b.addEventListener("click", () => setBuyMode(b.dataset.mode));
+function cycleBuyMode() {
+  const modes = ["1", "10", "max"];
+  setBuyMode(modes[(modes.indexOf(state.buyMode) + 1) % 3]);
+  toast("Expanding " + (state.buyMode === "max" ? "as many levels as you can afford" : "x" + state.buyMode));
+}
+
+// Two-press buttons (the page can't show a browser "Are you sure?" box)
+function armOrRun(btn, armedText, action) {
+  if (btn.dataset.armed === "1") { btn.dataset.armed = ""; action(); render(true); return; }
+  btn.dataset.armed = "1";
+  btn.dataset.label = btn.textContent;
+  btn.textContent = armedText;
+  setTimeout(() => { if (btn.dataset.armed === "1") { btn.dataset.armed = ""; btn.textContent = btn.dataset.label; render(true); } }, 4000);
+}
+$("retire").addEventListener("click", () => {
+  if (legacyGain() < 1) { toast("Earn more first: you'd get no Legacy stars"); return; }
+  armOrRun($("retire"), "Tap again to retire", retire);
+});
+$("wipe").addEventListener("click", () => armOrRun($("wipe"), "Tap again to wipe it all", () => {
+  state = freshState(); refreshDeals(); if (activeEvent) closeEvent(); rebuildLists(); saveNow(); toast("Save wiped. Fresh start.");
+}));
+$("copySave").addEventListener("click", async () => {
+  const code = encodeSave(state);
+  try { await navigator.clipboard.writeText(code); toast("Save code copied"); }
+  catch { $("importBox").value = code; $("importBox").select(); toast("Couldn't copy: the code is in the box, copy it from there"); }
+});
+$("importSave").addEventListener("click", () => {
+  try {
+    const s = decodeSave($("importBox").value);
+    s.lastTick = Date.now();                 // no away-earnings for pasted saves
+    adopt(s, "Save loaded");
+    saveNow();
+    $("importBox").value = "";
+  } catch { toast("That doesn't look like a save code"); }
+});
+
+document.addEventListener("keydown", e => {
+  if (e.target.tagName === "TEXTAREA") return;
+  if (modalOpen()) { if (["Enter", " ", "Escape"].includes(e.key)) { e.preventDefault(); $("modalOk").click(); } return; }
+  const map = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" };
+  if (map[e.key]) { e.preventDefault(); moveFocus(map[e.key]); return; }
+  if (e.key === " " && document.activeElement?.tagName !== "BUTTON") { e.preventDefault(); hustle(); return; }
+  if (e.key === "o" || e.key === "O") chooseEvent(0);
+  if (e.key >= "1" && e.key <= "5") showTab(TAB_ORDER[Number(e.key) - 1]);
+});
+
+// Move focus to the nearest visible button in a direction
+function moveFocus(dir) {
+  const buttons = [...document.querySelectorAll("button")].filter(b => b.offsetParent !== null);
+  const cur = buttons.includes(document.activeElement) ? document.activeElement : null;
+  if (!cur) { $("hustle").focus(); return; }
+  const a = cur.getBoundingClientRect(), ax = a.left + a.width / 2, ay = a.top + a.height / 2;
+  let best = null, bestScore = Infinity;
+  for (const b of buttons) {
+    if (b === cur) continue;
+    const r = b.getBoundingClientRect(), dx = r.left + r.width / 2 - ax, dy = r.top + r.height / 2 - ay;
+    if ((dir === "left" && dx >= -4) || (dir === "right" && dx <= 4) || (dir === "up" && dy >= -4) || (dir === "down" && dy <= 4)) continue;
+    const horiz = dir === "left" || dir === "right";
+    const score = (horiz ? Math.abs(dx) : Math.abs(dy)) + (horiz ? Math.abs(dy) : Math.abs(dx)) * 3;
+    if (score < bestScore) { bestScore = score; best = b; }
+  }
+  if (best) { best.focus(); best.scrollIntoView({ block: "nearest" }); }
+}
+
+// Game controller (standard layout: 0=A 1=B 2=X 3=Y 4=LB 5=RB 12-15=D-pad)
+const padPrev = {};
+let stickHeld = "";
+function pollGamepads() {
+  if (!navigator.getGamepads) return;
+  for (const pad of navigator.getGamepads()) {
+    if (!pad || pad.mapping !== "standard") continue;
+    $("padHints").classList.add("on");
+    const prev = padPrev[pad.index] || [];
+    const down = pad.buttons.map(b => b.pressed);
+    const pressed = i => down[i] && !prev[i];          // only the moment it goes down
+    if (modalOpen()) { if (pressed(0) || pressed(1)) $("modalOk").click(); }
+    else {
+      if (pressed(0)) { const el = document.activeElement; if (el && el.tagName === "BUTTON") el.click(); else hustle(); }
+      if (pressed(2)) hustle();
+      if (pressed(1)) chooseEvent(0);
+      if (pressed(3)) cycleBuyMode();
+      if (pressed(4)) cycleTab(-1);
+      if (pressed(5)) cycleTab(1);
+      if (pressed(12)) moveFocus("up");
+      if (pressed(13)) moveFocus("down");
+      if (pressed(14)) moveFocus("left");
+      if (pressed(15)) moveFocus("right");
+      const [x, y] = pad.axes;
+      const dir = Math.abs(x) > 0.6 || Math.abs(y) > 0.6 ? (Math.abs(x) > Math.abs(y) ? (x > 0 ? "right" : "left") : (y > 0 ? "down" : "up")) : "";
+      if (dir && dir !== stickHeld) moveFocus(dir);
+      stickHeld = dir;
+    }
+    padPrev[pad.index] = down;
+  }
+}
+
+
+/* =====================================================================
+   10. START UP
+   ===================================================================== */
+function start(hotData) {
+  // After a live update of this page, carry on where you were; otherwise
+  // load this browser's save and pay out the time you were away.
+  const hot = hotData && hotData.state ? (() => { try { return validState(hotData.state); } catch { return null; } })() : null;
+  if (hot) state = hot;
+  else {
+    const local = readLocal();
+    if (local) state = local;
+    else state.savedAt = 0;      // brand-new here: any save in your account wins over this empty one
+  }
+  catchUp(!hot);
+  if (!state.deals.length) refreshDeals();
+  rebuildLists();
+  requestAnimationFrame(frame);
+  connectCloud();
+}
+window.claude?.hot?.snapshot?.(() => ({ state }));
+if (window.claude?.hot?.ready) window.claude.hot.ready(start);
+else start(window.claude?.hot?.data ?? {});
+
+// Handles for automated tests (harmless in normal play)
+window.T = { get state() { return state; }, set state(s) { state = s; }, INDUSTRIES, UPGRADES, IND, hustle, buyListing, expandBiz, buyUpgrade,
+  baseIncome, bizIncome, incomeNow, tapValue, listingPrice, listingIncome, expandCost, maxExpand, legacyGain, retire, earnBetween, upgradeAvailable,
+  validState, encodeSave, decodeSave, catchUp, render, rebuildLists, refreshDeals, makeListing, makeEvent, chooseEvent, saveNow, short,
+  tierUnlocked, sectorLevels, get activeEvent() { return activeEvent; }, set activeEvent(e) { activeEvent = e; }, showEvent };
+</script>
+</body>
+</html>

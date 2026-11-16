@@ -1,0 +1,1250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paper Jam Tycoon</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;700&family=Big+Shoulders+Display:wght@600;800&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+/* =====================================================================
+   LOOK AND FEEL
+   The whole page is styled like a copier's front panel: warm grey
+   plastic, a dark control panel, a teal backlit LCD for the money, and
+   the big green Start button as the thing you tap.
+   Layout: two columns on wide screens (machine left, shop right);
+   one column on phones with the machine pinned to the top.
+   ===================================================================== */
+:root {
+  --plastic:   #dcd7cd;   /* copier body / page background */
+  --plastic-2: #c9c3b6;   /* darker plastic for edges and rows */
+  --panel:     #26292d;   /* control panel / dark surfaces */
+  --lcd:       #2c4c53;   /* LCD screen background */
+  --lcd-ink:   #d8f4ee;   /* LCD text */
+  --start:     #2f9e5b;   /* the green Start button: the one bold color */
+  --amber:     #e7a23b;   /* jam LED, rush calls */
+  --red:       #cf4a3e;   /* errors */
+  --ink:       #1f2124;   /* normal text */
+  --muted:     #5f5b54;   /* secondary text */
+  --display: "Big Shoulders Display", "Arial Narrow", sans-serif;
+  --body: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --mono: "Share Tech Mono", "Courier New", monospace;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--plastic);
+  color: var(--ink);
+  font: 16px/1.4 var(--body);
+  -webkit-tap-highlight-color: transparent;
+  overflow: hidden;              /* each column scrolls on its own */
+}
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--amber); outline-offset: 2px; }
+/* The hidden attribute must win over any display: rule below */
+[hidden] { display: none !important; }
+
+.app { display: grid; grid-template-columns: minmax(360px, 44%) 1fr; height: 100%; }
+
+/* ---------- LEFT: the machine ---------- */
+.machine {
+  background: var(--panel); color: var(--lcd-ink);
+  display: flex; flex-direction: column; gap: 14px;
+  padding: 16px; position: relative; overflow: hidden;
+}
+.brand { display: flex; justify-content: space-between; align-items: baseline; }
+.brand h1 {
+  font: 800 30px/1 var(--display); letter-spacing: .04em; text-transform: uppercase;
+  margin: 0; color: var(--plastic); text-wrap: balance;
+}
+.brand .save-state { font: 13px var(--mono); color: #9aa7a5; }
+.lcd {
+  background: var(--lcd); border-radius: 8px; padding: 12px 14px;
+  box-shadow: inset 0 2px 10px rgba(0,0,0,.45); font-family: var(--mono);
+}
+.lcd .cash { font-size: 44px; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.lcd .rates { display: flex; gap: 18px; flex-wrap: wrap; font-size: 16px; color: #a9d4cc; }
+.lcd .ot { color: var(--amber); }
+.copier-wrap { position: relative; flex: 1 1 auto; min-height: 150px; }
+#copier { width: 100%; height: 100%; display: block; }
+.ticket {
+  font-family: var(--mono); font-size: 15px; background: #f3efe6; color: var(--ink);
+  border-radius: 4px; padding: 8px 10px; display: grid; gap: 4px;
+  border-left: 6px solid var(--amber);
+}
+.ticket .row { display: flex; justify-content: space-between; gap: 8px; }
+.ticket .bar { height: 8px; background: #d8d2c4; border-radius: 4px; overflow: hidden; }
+.ticket .bar i { display: block; height: 100%; background: var(--start); width: 0; transition: width .08s; }
+.start {
+  appearance: none; border: 0; cursor: pointer; border-radius: 14px;
+  background: var(--start); color: #fff; padding: 18px 12px;
+  font: 800 30px/1 var(--display); letter-spacing: .06em; text-transform: uppercase;
+  box-shadow: 0 6px 0 #1d6b3c, 0 10px 20px rgba(0,0,0,.35);
+  touch-action: manipulation; user-select: none;
+}
+.start small { display: block; font: 500 15px var(--body); letter-spacing: 0; text-transform: none; margin-top: 6px; opacity: .9; }
+.start:active, .start.pressed { transform: translateY(5px); box-shadow: 0 1px 0 #1d6b3c, 0 4px 10px rgba(0,0,0,.35); }
+.rush {
+  position: absolute; left: 50%; top: 42%; transform: translate(-50%,-50%);
+  background: var(--amber); color: var(--ink); border: 0; border-radius: 10px;
+  padding: 14px 20px; font: 800 24px/1 var(--display); text-transform: uppercase; cursor: pointer;
+  box-shadow: 0 0 0 4px rgba(231,162,59,.35), 0 10px 24px rgba(0,0,0,.4);
+  animation: rushpulse .8s ease-in-out infinite alternate; z-index: 3;
+}
+.rush small { display: block; font: 500 14px var(--body); text-transform: none; margin-top: 4px; }
+@keyframes rushpulse { to { box-shadow: 0 0 0 12px rgba(231,162,59,.15), 0 10px 24px rgba(0,0,0,.4); } }
+.floats { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 4; }
+.float { position: absolute; font: 700 22px var(--mono); color: var(--lcd-ink); animation: rise 1s ease-out forwards; text-shadow: 0 2px 4px rgba(0,0,0,.6); }
+@keyframes rise { to { transform: translateY(-70px); opacity: 0; } }
+
+/* ---------- RIGHT: the shop ---------- */
+.shop { display: flex; flex-direction: column; min-height: 0; }
+.tabs { display: flex; gap: 4px; padding: 12px 16px 0; background: var(--plastic-2); flex-wrap: wrap; }
+.tab {
+  appearance: none; border: 0; cursor: pointer; padding: 10px 16px;
+  border-radius: 8px 8px 0 0; background: transparent;
+  font: 800 19px var(--display); letter-spacing: .05em; text-transform: uppercase; color: var(--muted);
+}
+.tab[aria-selected="true"] { background: var(--plastic); color: var(--ink); }
+.tab .badge { background: var(--start); color: #fff; border-radius: 10px; padding: 0 7px; font: 700 13px var(--body); margin-left: 6px; vertical-align: 2px; }
+.buymode { margin-left: auto; display: flex; gap: 4px; align-items: center; padding-bottom: 6px; }
+.buymode button {
+  appearance: none; border: 2px solid var(--panel); background: transparent; border-radius: 6px;
+  padding: 4px 10px; font: 700 14px var(--body); cursor: pointer;
+}
+.buymode button[aria-pressed="true"] { background: var(--panel); color: var(--plastic); }
+.pane { overflow-y: auto; padding: 14px 16px 24px; display: none; flex-direction: column; gap: 8px; flex: 1; }
+.pane.on { display: flex; }
+
+/* one row in the crew list or upgrade list */
+.item {
+  display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center;
+  background: #e8e3d8; border-radius: 10px; padding: 10px 12px;
+  border-left: 6px solid var(--plastic-2);
+}
+.item.affordable { border-left-color: var(--start); }
+.item h3 { margin: 0; font: 800 21px/1.1 var(--display); letter-spacing: .02em; }
+.item h3 .count { font-family: var(--mono); font-size: 18px; color: var(--muted); margin-left: 6px; }
+.item p { margin: 0; font-size: 14px; color: var(--muted); }
+.item .buy {
+  grid-row: 1 / span 2; grid-column: 2;
+  appearance: none; border: 0; cursor: pointer; border-radius: 8px; min-width: 120px;
+  padding: 10px 12px; background: var(--panel); color: var(--plastic);
+  font: 18px var(--mono); text-align: center; font-variant-numeric: tabular-nums;
+}
+.item .buy small { display: block; font: 12px var(--body); opacity: .8; }
+.item .buy[aria-disabled="true"] { background: #b9b3a6; color: #6e695f; cursor: default; }
+.item.mystery { opacity: .55; }
+.note { font-size: 14px; color: var(--muted); margin: 4px 2px; }
+.card { background: #e8e3d8; border-radius: 10px; padding: 14px; display: grid; gap: 10px; }
+.card h2 { margin: 0; font: 800 26px var(--display); text-transform: uppercase; letter-spacing: .03em; }
+.card p { margin: 0; }
+.bigbtn {
+  appearance: none; border: 0; cursor: pointer; border-radius: 10px; padding: 12px 16px;
+  background: var(--panel); color: var(--plastic); font: 800 20px var(--display); letter-spacing: .05em; text-transform: uppercase;
+  justify-self: start;
+}
+.bigbtn.go { background: var(--start); color: #fff; }
+.bigbtn.danger { background: var(--red); color: #fff; }
+.bigbtn[aria-disabled="true"] { background: #b9b3a6; color: #6e695f; cursor: default; }
+.stats { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; font-size: 15px; }
+.stats dt { color: var(--muted); }
+.stats dd { margin: 0; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+textarea { width: 100%; min-height: 80px; font: 13px var(--mono); border-radius: 6px; border: 2px solid var(--plastic-2); padding: 8px; background: #f6f3ec; }
+
+/* pop-up box (offline earnings, messages) */
+.modal-back { position: fixed; inset: 0; background: rgba(20,22,24,.6); display: none; place-items: center; z-index: 10; padding: 16px; }
+.modal-back.on { display: grid; }
+.modal { background: var(--plastic); border-radius: 14px; padding: 20px; max-width: 440px; width: 100%; display: grid; gap: 12px; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+.modal h2 { margin: 0; font: 800 30px var(--display); text-transform: uppercase; }
+.modal .amount { font: 40px var(--mono); color: var(--start); }
+.toast {
+  position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+  background: var(--panel); color: var(--plastic); padding: 10px 16px; border-radius: 10px;
+  font-size: 15px; z-index: 11; opacity: 0; transition: opacity .25s; pointer-events: none; max-width: 90vw; text-align: center;
+}
+.toast.on { opacity: 1; }
+.padhints { display: none; font: 13px var(--mono); color: #9aa7a5; text-align: center; }
+.padhints.on { display: block; }
+
+/* ---------- phones: one column, machine pinned on top ---------- */
+@media (max-width: 760px) {
+  body { overflow: auto; }
+  .app { display: block; height: auto; }
+  .machine { position: sticky; top: 0; z-index: 5; padding: 10px 12px; gap: 8px; }
+  .brand h1 { font-size: 22px; }
+  .lcd { padding: 8px 10px; }
+  .lcd .cash { font-size: 32px; }
+  .lcd .rates { font-size: 14px; gap: 12px; }
+  .copier-wrap { flex: none; height: 92px; min-height: 0; }
+  .ticket { font-size: 13px; padding: 6px 8px; }
+  .start { padding: 12px; font-size: 24px; }
+  .start small { font-size: 13px; margin-top: 3px; }
+  .rush { top: 50%; font-size: 20px; padding: 10px 14px; }
+  .pane { overflow: visible; }
+  .buymode { width: 100%; margin-left: 0; padding: 6px 0; }
+  .tab { padding: 8px 9px; font-size: 16px; }
+  .tab .wide { display: none; }     /* "Crew & gear" becomes "Crew" so the tabs fit on one line */
+  .item .buy { min-width: 100px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .float, .rush { animation: none; }
+  .float { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- ================= LEFT: THE MACHINE ================= -->
+  <section class="machine" aria-label="Your current service call">
+    <div class="brand">
+      <h1>Paper Jam Tycoon</h1>
+      <span class="save-state" id="saveState">Saving on this device</span>
+    </div>
+    <div class="lcd" aria-live="off">
+      <div class="cash" id="cash">$0</div>
+      <div class="rates">
+        <span id="ips">$0 / sec</span>
+        <span id="tapv">$1 per tap</span>
+        <span class="ot" id="ot"></span>
+      </div>
+    </div>
+    <div class="copier-wrap">
+      <canvas id="copier" aria-hidden="true"></canvas>
+      <button class="rush" id="rush" hidden>Rush call! <small id="rushLeft">Tap to take it</small></button>
+    </div>
+    <div class="ticket" id="ticket">
+      <div class="row"><strong id="tkNum">SC-00001</strong><span id="tkWhere">Front desk</span></div>
+      <div id="tkIssue">Paper jam in Tray 2</div>
+      <div class="bar"><i id="tkBar"></i></div>
+    </div>
+    <button class="start" id="start">Clear it <small id="startSub">Tap to work the call</small></button>
+    <div class="padhints" id="padHints">A press · X work call · B rush call · LB/RB tabs · Y buy amount</div>
+    <div class="floats" id="floats"></div>
+  </section>
+
+  <!-- ================= RIGHT: THE SHOP ================= -->
+  <section class="shop">
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" id="tab-crew" aria-selected="true" data-pane="crew">Crew<span class="wide"> &amp; gear</span></button>
+      <button class="tab" role="tab" id="tab-upg" aria-selected="false" data-pane="upg">Upgrades<span class="badge" id="upgBadge" hidden>0</span></button>
+      <button class="tab" role="tab" id="tab-fran" aria-selected="false" data-pane="fran">Franchise</button>
+      <button class="tab" role="tab" id="tab-set" aria-selected="false" data-pane="set">Stats</button>
+      <div class="buymode" id="buymode" aria-label="How many to buy">
+        <button id="bm1" data-mode="1" aria-pressed="true">x1</button>
+        <button id="bm10" data-mode="10" aria-pressed="false">x10</button>
+        <button id="bmmax" data-mode="max" aria-pressed="false">Max</button>
+      </div>
+    </div>
+    <div class="pane on" id="pane-crew"></div>
+    <div class="pane" id="pane-upg"></div>
+    <div class="pane" id="pane-fran">
+      <div class="card">
+        <h2>Sell and franchise</h2>
+        <p>Sell your company and start over with one copier and a reputation. Every Reputation star makes all your income and taps <strong id="repPct">10%</strong> bigger, forever.</p>
+        <p>Stars come from everything you have ever earned. You have <strong id="repNow">0</strong> stars. Selling now adds <strong id="repGain">0</strong>.</p>
+        <p class="note" id="repNext"></p>
+        <button class="bigbtn go" id="prestige" aria-disabled="true">Sell the company</button>
+      </div>
+    </div>
+    <div class="pane" id="pane-set">
+      <div class="card">
+        <h2>Stats</h2>
+        <dl class="stats" id="stats"></dl>
+      </div>
+      <div class="card">
+        <h2>Your save</h2>
+        <p id="saveInfo">The game saves itself every 30 seconds and when you leave.</p>
+        <button class="bigbtn" id="copySave">Copy save code</button>
+        <label for="importBox">Paste a save code to load it:</label>
+        <textarea id="importBox" spellcheck="false"></textarea>
+        <button class="bigbtn" id="importSave">Load pasted save</button>
+      </div>
+      <div class="card">
+        <h2>Start over</h2>
+        <p>Wipes everything, Reputation stars included. This cannot be undone.</p>
+        <button class="bigbtn danger" id="wipe">Wipe my save</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="modal-back" id="modalBack">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <h2 id="modalTitle">While you were out</h2>
+    <p id="modalText"></p>
+    <div class="amount" id="modalAmount"></div>
+    <button class="bigbtn go" id="modalOk">Back to work</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* =====================================================================
+   PAPER JAM TYCOON
+   An incremental (idle) game: tap to work service calls, hire crew and
+   buy gear that earn money on their own, buy upgrades that multiply it,
+   then sell the company for permanent Reputation and do it again faster.
+
+   HOW THIS FILE IS ORGANISED
+     1. GAME DATA      - every crew tier, upgrade and number you'd tune
+     2. GAME STATE     - the one object that IS your save
+     3. MATH           - income, tap value, costs, reputation
+     4. ACTIONS        - tap, buy, rush calls, prestige
+     5. TIME           - the main loop and offline catch-up
+     6. SAVING         - this browser + your Claude account (syncs devices)
+     7. SCREEN         - drawing numbers, lists and the copier
+     8. CONTROLS       - touch/mouse, keyboard, game controller
+     9. START UP
+   ===================================================================== */
+
+
+/* =====================================================================
+   1. GAME DATA
+   ===================================================================== */
+
+// Crew and gear you can buy. Each one earns `income` dollars per second.
+// Every copy you own makes the next one 15% pricier (COST_GROWTH).
+const TIERS = [
+  { id: "intern",  name: "Intern",              cost: 15,     income: 0.3,    desc: "Clears paper jams. Mostly." },
+  { id: "tech",    name: "Field Tech",          cost: 110,    income: 2,      desc: "Has a Torx set and opinions." },
+  { id: "van",     name: "Service Van",         cost: 1200,   income: 10,     desc: "Parts on board, fewer trips back." },
+  { id: "depot",   name: "Parts Depot",         cost: 13000,  income: 55,     desc: "Fusers on the shelf, not on backorder." },
+  { id: "dispatch",name: "Dispatch Office",     cost: 145e3,  income: 300,    desc: "Routes calls to whoever is closest." },
+  { id: "mps",     name: "Print Contract",      cost: 1.6e6,  income: 1600,   desc: "Every page a customer prints, you get paid." },
+  { id: "branch",  name: "Regional Branch",     cost: 2.1e7,  income: 9000,   desc: "A whole new territory full of copiers." },
+  { id: "monitor", name: "Monitoring Network",  cost: 3.3e8,  income: 55000,  desc: "Meter reads and toner alerts arrive on their own." },
+  { id: "factory", name: "Toner Factory",       cost: 5.1e9,  income: 350000, desc: "Why buy toner when you can make it?" },
+];
+const COST_GROWTH = 1.15;
+
+// Every tier gets four "double this tier's income" upgrades, unlocked when
+// you own 10, 25, 50 and 100 of it. These are their names, in that order.
+const TIER_UPGRADE_NAMES = {
+  intern:   ["Jam Pliers", "Flashlights", "Knee Pads", "Coffee Run"],
+  tech:     ["Proper Torx Set", "Service Manual Index", "Firmware Flash Drives", "Spare Fuser Gloves"],
+  van:      ["Van Shelving", "Toner in the Van", "Route Planning", "Second Toolbox"],
+  depot:    ["Barcode Scanners", "Same-Day Shipping", "Bulk Toner Buys", "Parts Cross-Reference"],
+  dispatch: ["Dispatch Wall Screen", "Auto Ticket Routing", "Headsets for Everyone", "Callback Scripts"],
+  mps:      ["Automatic Meter Reads", "Toner Auto-Ship", "Device Alerts", "Five-Year Renewals"],
+  branch:   ["Branch Managers", "Training Center", "Loaner Fleet", "Billboards"],
+  monitor:  ["Predictive Fuser Swaps", "Fleet Dashboards", "Remote Firmware Push", "Diagnostics Bot"],
+  factory:  ["Drum Line", "Recycled Cartridges", "Unjammable Tray", "Global Shipping"],
+};
+const TIER_MILESTONES = [10, 25, 50, 100];
+
+// Other upgrades. `kind` says what they change:
+//   tapFlat  - adds to your base tap value
+//   tapMult  - multiplies tap value
+//   tapPct   - each tap also pays this share of your income per second
+//   global   - multiplies ALL income (and taps)
+//   rushRate - rush calls come this much more often (0.25 = 25%)
+//   otTime   - overtime lasts this many extra seconds
+// `need` is how much you must have earned this run before it shows up.
+const EXTRA_UPGRADES = [
+  { id: "tap1",  name: "Steady Hands",        cost: 60,     kind: "tapFlat",  value: 1,    need: 20,    desc: "+$1 per tap." },
+  { id: "tap2",  name: "Two-Handed Clears",   cost: 800,    kind: "tapMult",  value: 2,    need: 300,   desc: "Taps pay double." },
+  { id: "tap3",  name: "Muscle Memory",       cost: 12e3,   kind: "tapPct",   value: 0.01, need: 4e3,   desc: "Each tap also pays 1% of your income per second." },
+  { id: "rush1", name: "Pager",               cost: 25e3,   kind: "rushRate", value: 0.25, need: 8e3,   desc: "Rush calls come 25% more often." },
+  { id: "glob1", name: "Five-Star Reviews",   cost: 75e3,   kind: "global",   value: 1.25, need: 25e3,  desc: "All income +25%." },
+  { id: "tap4",  name: "Jam Whisperer",       cost: 900e3,  kind: "tapPct",   value: 0.02, need: 300e3, desc: "Taps pay 2% more of your income per second." },
+  { id: "ot1",   name: "Overtime Pay",        cost: 1.5e6,  kind: "otTime",   value: 15,   need: 500e3, desc: "Overtime lasts 15 seconds longer." },
+  { id: "glob2", name: "Company Polos",       cost: 4e6,    kind: "global",   value: 1.25, need: 1.3e6, desc: "All income +25%." },
+  { id: "rush2", name: "Customer Hotline",    cost: 6e7,    kind: "rushRate", value: 0.25, need: 2e7,   desc: "Rush calls come 25% more often." },
+  { id: "glob3", name: "Fleet Credit Card",   cost: 1.2e8,  kind: "global",   value: 1.5,  need: 4e7,   desc: "All income +50%." },
+  { id: "tap5",  name: "One-Tap Fix",         cost: 1e9,    kind: "tapPct",   value: 0.03, need: 3e8,   desc: "Taps pay 3% more of your income per second." },
+  { id: "glob4", name: "Service Agreements",  cost: 8e9,    kind: "global",   value: 1.5,  need: 2.5e9, desc: "All income +50%." },
+  { id: "glob5", name: "Industry Award",      cost: 2e11,   kind: "global",   value: 2,    need: 6e10,  desc: "All income doubled." },
+];
+
+// Build the full upgrade list: the extras plus four per tier.
+const UPGRADES = [...EXTRA_UPGRADES];
+TIERS.forEach((tier, t) => {
+  TIER_MILESTONES.forEach((owned, k) => {
+    UPGRADES.push({
+      id: tier.id + "_" + owned,
+      name: TIER_UPGRADE_NAMES[tier.id][k],
+      // costs 3x what one copy of the tier costs at that milestone, rounded to 2 digits
+      cost: roundNice(tier.cost * Math.pow(COST_GROWTH, owned) * 3),
+      kind: "tier", tier: t, owned,
+      desc: `${tier.name} income doubled. (Needs ${owned} ${tier.name}${owned > 1 ? "s" : ""}.)`,
+    });
+  });
+});
+UPGRADES.sort((a, b) => a.cost - b.cost);
+const UPGRADE_BY_ID = Object.fromEntries(UPGRADES.map(u => [u.id, u]));
+
+// Tap and service-call numbers
+const STEPS_PER_CALL = 8;        // taps to finish one service call
+const CALL_BONUS_TAPS = 5;       // finishing a call pays this many extra taps
+
+// Rush calls: a flashing button that appears every so often
+const RUSH_MIN = 90, RUSH_MAX = 200;   // seconds between rush calls (before upgrades)
+const RUSH_VISIBLE = 13;               // seconds it stays up before it's gone
+const OT_MULT = 5;                     // overtime multiplies income by this
+const OT_BASE_SECONDS = 30;            // and lasts this long
+const BIG_CLIENT_SECONDS = 120;        // "big client" pays this many seconds of income
+
+// Reputation (prestige): stars = floor( sqrt(everything ever earned / REP_DIVISOR) )
+const REP_DIVISOR = 5e7;
+const REP_BONUS = 0.10;                // +10% per star
+
+// Away-from-game earnings are capped at this many hours (one work shift)
+const OFFLINE_CAP_HOURS = 8;
+
+// Flavour text for tickets
+const ISSUES = ["Paper jam in Tray 2", "Toner low, prints faded", "Streaks down the page", "Fuser error",
+  "Won't scan to email", "Grinding noise", "Lines in copies", "Feeder grabs two sheets", "Smudged prints",
+  "Shows offline on the network", "Wrong tray selected (again)", "Someone kicked it", "Staples jammed in finisher",
+  "Prints come out curled", "Display frozen", "Toner on everything"];
+const PLACES = ["Front desk", "Accounting", "Library", "Nurses' station", "Legal", "Warehouse",
+  "Principal's office", "HR", "Mail room", "3rd floor", "Records", "Break room"];
+
+
+/* =====================================================================
+   2. GAME STATE
+   Everything that gets saved lives in `state`. Anything else can be
+   worked out from it. Bump SAVE_VERSION if the shape ever changes.
+   ===================================================================== */
+const SAVE_VERSION = 1;
+const LOCAL_KEY = "paperJamTycoon.save.v1";
+
+function freshState(keepRep = 0, keepEarnedAll = 0, keepStats = {}) {
+  return {
+    v: SAVE_VERSION,
+    cash: 0,
+    earnedRun: 0,               // earned since the last Sell (decides which upgrades show)
+    earnedAll: keepEarnedAll,   // earned ever (decides Reputation)
+    rep: keepRep,               // Reputation stars you have
+    owned: TIERS.map(() => 0),  // how many of each tier you own
+    upgrades: {},               // { upgradeId: true } for each one bought
+    callStep: 0,                // progress on the current ticket (0..STEPS_PER_CALL)
+    callNo: keepStats.callNo || 1,
+    issue: 0, place: 0,         // which flavour text the current ticket shows
+    overtimeUntil: 0,           // Date.now() time when overtime ends (0 = none)
+    nextRushAt: Date.now() + 45e3,   // first rush call comes fairly quickly
+    stats: Object.assign({ taps: 0, calls: 0, rushes: 0, sells: 0, startedAt: Date.now() }, keepStats),
+    buyMode: "1",
+    savedAt: Date.now(),        // when this state was last saved (or loaded)
+    lastTick: Date.now(),       // when income was last added
+  };
+}
+let state = freshState();
+
+
+/* =====================================================================
+   3. MATH
+   ===================================================================== */
+
+// Round a price to 2 significant digits so upgrades cost $1,200 not $1,187.43
+function roundNice(n) {
+  const mag = Math.pow(10, Math.floor(Math.log10(n)) - 1);
+  return Math.round(n / mag) * mag;
+}
+
+// Multiply together every bought upgrade of one kind (or add them, for flat ones)
+function upgradeTotal(kind, start, combine) {
+  let total = start;
+  for (const id in state.upgrades) {
+    const u = UPGRADE_BY_ID[id];
+    if (u && u.kind === kind) total = combine(total, u.value);
+  }
+  return total;
+}
+const globalMult = () => upgradeTotal("global", 1, (a, b) => a * b) * (1 + REP_BONUS * state.rep);
+const isOvertime = (now = Date.now()) => now < state.overtimeUntil;
+
+// How much one copy of tier t earns per second, with all its upgrades
+function tierIncome(t) {
+  let mult = 1;
+  for (const m of TIER_MILESTONES) if (state.upgrades[TIERS[t].id + "_" + m]) mult *= 2;
+  return TIERS[t].income * mult * globalMult();
+}
+// Total income per second WITHOUT overtime (overtime is handled where time passes)
+function baseIncome() {
+  let total = 0;
+  for (let t = 0; t < TIERS.length; t++) total += state.owned[t] * tierIncome(t);
+  return total;
+}
+const incomeNow = () => baseIncome() * (isOvertime() ? OT_MULT : 1);
+
+// What one tap pays
+function tapValue() {
+  const flat = 1 + upgradeTotal("tapFlat", 0, (a, b) => a + b);
+  const mult = upgradeTotal("tapMult", 1, (a, b) => a * b);
+  const pct = upgradeTotal("tapPct", 0, (a, b) => a + b);
+  return (flat * mult * globalMult() + pct * baseIncome()) * (isOvertime() ? OT_MULT : 1);
+}
+
+// Price of buying `count` more of tier t, given how many you own.
+// It's a geometric series: cost * g^owned * (g^count - 1) / (g - 1)
+function costOf(t, count) {
+  const g = COST_GROWTH;
+  return TIERS[t].cost * Math.pow(g, state.owned[t]) * (Math.pow(g, count) - 1) / (g - 1);
+}
+// The most of tier t you can afford right now (0 if not even one)
+function maxAffordable(t) {
+  const g = COST_GROWTH;
+  const first = TIERS[t].cost * Math.pow(g, state.owned[t]);
+  if (state.cash < first) return 0;
+  return Math.floor(Math.log(state.cash * (g - 1) / first + 1) / Math.log(g));
+}
+// How many to buy when you press the button, based on the x1 / x10 / Max setting
+function buyCount(t) {
+  if (state.buyMode === "max") return Math.max(1, maxAffordable(t));
+  return Number(state.buyMode);
+}
+
+// Reputation stars your lifetime earnings are worth, and what selling adds
+const repTotalFor = earned => Math.floor(Math.sqrt(earned / REP_DIVISOR));
+const repGain = () => Math.max(0, repTotalFor(state.earnedAll) - state.rep);
+// Lifetime earnings needed for the next star
+const earnedForRep = stars => stars * stars * REP_DIVISOR;
+
+// Is an upgrade on offer right now? (bought ones are not)
+function upgradeAvailable(u) {
+  if (state.upgrades[u.id]) return false;
+  if (u.kind === "tier") return state.owned[u.tier] >= u.owned;
+  return state.earnedRun >= u.need;
+}
+function rushInterval() {
+  const faster = upgradeTotal("rushRate", 0, (a, b) => a + b);
+  const base = RUSH_MIN + Math.random() * (RUSH_MAX - RUSH_MIN);
+  return base / (1 + faster) * 1000;
+}
+const overtimeSeconds = () => OT_BASE_SECONDS + upgradeTotal("otTime", 0, (a, b) => a + b);
+
+
+/* =====================================================================
+   4. ACTIONS
+   ===================================================================== */
+
+function addCash(amount) {
+  state.cash += amount;
+  state.earnedRun += amount;
+  state.earnedAll += amount;
+}
+
+// One tap on the green button
+function tap(fromX, fromY) {
+  const v = tapValue();
+  addCash(v);
+  state.stats.taps++;
+  state.callStep++;
+  let label = "+" + money(v);
+  if (state.callStep >= STEPS_PER_CALL) {
+    // Ticket done: pay the bonus, start a new ticket, spit out a sheet of paper
+    const bonus = v * CALL_BONUS_TAPS;
+    addCash(bonus);
+    state.stats.calls++;
+    state.callNo++;
+    state.callStep = 0;
+    state.issue = Math.floor(Math.random() * ISSUES.length);
+    state.place = Math.floor(Math.random() * PLACES.length);
+    label = "Call closed! +" + money(v + bonus);
+    sheets.push({ t: 0 });
+  }
+  shakeTime = 0.12;
+  floatText(label, fromX, fromY);
+  dirty = true;
+}
+
+// Buy tier t (as many as the buy mode says, if you can afford them)
+function buyTier(t) {
+  const count = buyCount(t);
+  const price = costOf(t, count);
+  if (count < 1 || price > state.cash) { toast("Not enough cash yet"); return false; }
+  state.cash -= price;
+  state.owned[t] += count;
+  dirty = true;
+  render(true);
+  return true;
+}
+
+function buyUpgrade(id) {
+  const u = UPGRADE_BY_ID[id];
+  if (!u || !upgradeAvailable(u)) return false;
+  if (u.cost > state.cash) { toast("Not enough cash yet"); return false; }
+  state.cash -= u.cost;
+  state.upgrades[id] = true;
+  dirty = true;
+  render(true);
+  return true;
+}
+
+// Rush call: show it when its time comes, hide it if ignored too long
+let rushShownAt = 0;   // when the current rush call appeared (0 = none showing)
+function updateRush(now) {
+  if (!rushShownAt && now >= state.nextRushAt) rushShownAt = now;
+  if (rushShownAt && now - rushShownAt > RUSH_VISIBLE * 1000) {
+    rushShownAt = 0;                                  // missed it
+    state.nextRushAt = now + rushInterval();
+  }
+}
+function takeRush() {
+  if (!rushShownAt) return;
+  const now = Date.now();
+  rushShownAt = 0;
+  state.nextRushAt = now + rushInterval();
+  state.stats.rushes++;
+  // Half the time a big client pays a lump sum, half the time it's overtime.
+  // Before you have any income, always pay out (overtime of $0 is no fun).
+  if (Math.random() < 0.5 || baseIncome() === 0) {
+    const pay = Math.max(baseIncome() * BIG_CLIENT_SECONDS, tapValue() * 40);
+    addCash(pay);
+    showModal("Big client!", "A hospital needed twelve machines fixed before lunch. You made it.", money(pay));
+  } else {
+    state.overtimeUntil = Math.max(state.overtimeUntil, now) + overtimeSeconds() * 1000;
+    toast(`Overtime! Everything pays ${OT_MULT}x for ${overtimeSeconds()} seconds`);
+  }
+  dirty = true;
+}
+
+// Sell the company: keep stars and lifetime earnings, lose the rest
+function prestige() {
+  const gain = repGain();
+  if (gain < 1) return;
+  const stats = Object.assign({}, state.stats, { sells: state.stats.sells + 1 });
+  const mode = state.buyMode;
+  state = freshState(state.rep + gain, state.earnedAll, stats);
+  state.buyMode = mode;
+  rebuildLists();
+  dirty = true;
+  saveNow();
+  showModal("Sold!", `You start over with ${state.rep} Reputation stars. Everything earns ${Math.round(REP_BONUS * 100 * state.rep)}% more.`, "★ " + state.rep);
+}
+
+
+/* =====================================================================
+   5. TIME
+   Income is added from the real clock, so time spent in another tab
+   or with the game closed counts too. Long breaks are capped at
+   OFFLINE_CAP_HOURS and get a "while you were out" message.
+   ===================================================================== */
+
+// Add income for the time between `from` and `to` (both Date.now() values).
+// Handles overtime that ends part way through.
+function earnBetween(from, to) {
+  const seconds = Math.max(0, (to - from) / 1000);
+  if (seconds === 0) return 0;
+  const otSeconds = Math.min(seconds, Math.max(0, (state.overtimeUntil - from) / 1000));
+  const earned = baseIncome() * (seconds + otSeconds * (OT_MULT - 1));
+  addCash(earned);
+  return earned;
+}
+
+// Called on start-up and when a save from another device is picked up.
+// If you were gone more than a minute, say what you earned.
+function catchUp(showMessage) {
+  const now = Date.now();
+  const away = now - state.lastTick;
+  if (away <= 0) { state.lastTick = now; return; }
+  const capped = Math.min(away, OFFLINE_CAP_HOURS * 3600e3);
+  const earned = earnBetween(state.lastTick, state.lastTick + capped);
+  state.lastTick = now;
+  // Don't let a rush call fire instantly the moment you come back
+  if (state.nextRushAt < now) state.nextRushAt = now + 20e3;
+  if (showMessage && away > 60e3 && earned > 0) {
+    const capNote = away > capped ? ` (pay is capped at ${OFFLINE_CAP_HOURS} hours)` : "";
+    showModal("While you were out", `You were gone ${duration(away)}${capNote}. Your crew kept working.`, "+" + money(earned));
+  }
+}
+
+let lastFrame = performance.now();
+let lastSlowRender = 0;
+function frame(nowPerf) {
+  const dt = Math.min(0.25, (nowPerf - lastFrame) / 1000);   // seconds since last frame (for animation only)
+  lastFrame = nowPerf;
+  const now = Date.now();
+  const gap = now - state.lastTick;
+  if (gap > 60e3) catchUp(true);           // came back from a long background stretch
+  else if (gap > 0) { earnBetween(state.lastTick, now); state.lastTick = now; }
+  updateRush(now);
+  render(false);
+  if (nowPerf - lastSlowRender > 250) { lastSlowRender = nowPerf; render(true); }
+  drawCopier(dt);
+  pollGamepads();
+  requestAnimationFrame(frame);
+}
+
+
+/* =====================================================================
+   6. SAVING
+   Always saved in this browser (localStorage). If you are signed in to
+   Claude, also saved to your account, so the same game follows you
+   between the Steam Deck, your phone and your PC. The newest save wins.
+   ===================================================================== */
+let dirty = false;           // something changed since the last save
+let db = null, saveDoc = null;
+let cloudWriting = false, cloudAgain = false;
+const DEVICE_ID = (() => {   // random id for this browser, to tell our own saves from other devices'
+  try {
+    let id = localStorage.getItem("paperJamTycoon.device");
+    if (!id) { id = Math.random().toString(36).slice(2); localStorage.setItem("paperJamTycoon.device", id); }
+    return id;
+  } catch { return Math.random().toString(36).slice(2); }
+})();
+
+const encodeSave = s => btoa(unescape(encodeURIComponent(JSON.stringify(s))));
+function decodeSave(text) {
+  const s = JSON.parse(decodeURIComponent(escape(atob(text.trim()))));
+  return validState(s);
+}
+// Check a loaded save looks right and fill in anything missing, so an old
+// or damaged save can never crash the game.
+function validState(s) {
+  if (!s || typeof s !== "object" || typeof s.cash !== "number" || !Array.isArray(s.owned)) throw new Error("not a save");
+  const base = freshState();
+  const out = Object.assign(base, s);
+  out.stats = Object.assign(base.stats, s.stats || {});
+  out.owned = TIERS.map((_, i) => Math.max(0, Math.floor(Number(s.owned[i]) || 0)));
+  out.upgrades = {};
+  for (const id in (s.upgrades || {})) if (UPGRADE_BY_ID[id]) out.upgrades[id] = true;
+  for (const k of ["cash", "earnedRun", "earnedAll", "rep", "savedAt", "lastTick", "overtimeUntil", "nextRushAt"]) {
+    if (!Number.isFinite(out[k]) || out[k] < 0) out[k] = base[k];
+  }
+  if (!["1", "10", "max"].includes(out.buyMode)) out.buyMode = "1";
+  return out;
+}
+
+function readLocal() {
+  try { const raw = localStorage.getItem(LOCAL_KEY); return raw ? validState(JSON.parse(raw)) : null; }
+  catch { return null; }
+}
+
+function saveNow() {
+  state.savedAt = Date.now();
+  dirty = false;
+  try { localStorage.setItem(LOCAL_KEY, JSON.stringify(state)); } catch { /* storage blocked: account save still works */ }
+  saveCloud();
+}
+
+// Write to the Claude account. Only one write at a time; if another save
+// comes in while one is running, it goes out right after.
+async function saveCloud() {
+  if (!saveDoc) return;
+  // A device in the background doesn't push saves, so a forgotten tab can't
+  // overwrite what you're doing on another device.
+  if (document.visibilityState !== "visible" && !finalSave) return;
+  if (cloudWriting) { cloudAgain = true; return; }
+  cloudWriting = true;
+  try {
+    await saveDoc.set({ save: JSON.stringify(state), savedAt: state.savedAt, device: DEVICE_ID });
+    setSaveLabel("Saved to your account");
+  } catch (e) {
+    setSaveLabel("Saving on this device");
+  } finally {
+    cloudWriting = false;
+    if (cloudAgain) { cloudAgain = false; saveCloud(); }
+  }
+}
+let finalSave = false;
+
+// Adopt a save from somewhere else (another device or a pasted code)
+function adopt(newState, message) {
+  state = newState;
+  catchUp(false);
+  rebuildLists();
+  render(true);
+  if (message) toast(message);
+}
+
+// Connect to the account save, if this page is running where that works
+async function connectCloud() {
+  if (!window.claude?.use) return;          // opened as a plain file: local only
+  try {
+    db = await claude.use("db");
+    const user = await claude.use("user");
+    if (!db || !user) { setSaveLabel("Saving on this device"); return; }
+    const id = await user.id();
+    saveDoc = db.collection("data/users/" + id).doc("save");   // private to you
+    const snap = await withTimeout(saveDoc.get(), 10000);
+    const remote = parseRemote(snap);
+    if (remote && remote.savedAt > state.savedAt) {
+      adopt(remote, "Loaded your save from your account");
+    } else {
+      saveNow();                              // ours is newer (or first time): upload it
+    }
+    setSaveLabel("Saved to your account");
+    // Watch for saves from your other devices while this one is open
+    saveDoc.onSnapshot(s => {
+      const data = s && (s.data ? s.data() : s);
+      if (!data || data.device === DEVICE_ID) return;
+      const incoming = parseRemote(s);
+      if (incoming && incoming.savedAt > state.savedAt) adopt(incoming, "Picked up your progress from another device");
+    }, () => {});
+  } catch (e) {
+    setSaveLabel("Saving on this device");
+  }
+}
+function parseRemote(snap) {
+  try {
+    const data = snap && (typeof snap.data === "function" ? snap.data() : snap);
+    if (!data || !data.save) return null;
+    const s = validState(JSON.parse(data.save));
+    s.savedAt = data.savedAt || s.savedAt;
+    return s;
+  } catch { return null; }
+}
+function withTimeout(promise, ms) {
+  return Promise.race([promise, new Promise((_, no) => setTimeout(() => no(new Error("timeout")), ms))]);
+}
+function setSaveLabel(text) { document.getElementById("saveState").textContent = text; }
+
+// Save every 30 seconds if anything changed, and whenever you leave the page
+setInterval(() => { if (dirty || Date.now() - state.savedAt > 30e3) saveNow(); }, 30e3);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") { finalSave = true; saveNow(); finalSave = false; }
+});
+window.addEventListener("pagehide", () => { finalSave = true; saveNow(); finalSave = false; });
+
+
+/* =====================================================================
+   7. SCREEN
+   ===================================================================== */
+const $ = id => document.getElementById(id);
+
+// Number formatting: 1,234 / 12.3K / 4.56M / ... / 1.23e45
+const SUFFIXES = ["", "K", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No", "Dc"];
+function short(n) {
+  if (!Number.isFinite(n)) return "∞";
+  if (n < 10) return n.toFixed(n < 1 && n > 0 ? 2 : 1).replace(/\.0$/, "");
+  if (n < 1e4) return Math.floor(n).toLocaleString("en-US");
+  const tier = Math.floor(Math.log10(n) / 3);
+  if (tier >= SUFFIXES.length) return n.toExponential(2);
+  const scaled = n / Math.pow(1000, tier);
+  return scaled.toFixed(scaled < 10 ? 2 : scaled < 100 ? 1 : 0) + SUFFIXES[tier];
+}
+const money = n => "$" + short(n);
+function duration(ms) {
+  const m = Math.floor(ms / 60e3), h = Math.floor(m / 60), d = Math.floor(h / 24);
+  if (d > 0) return `${d}d ${h % 24}h`;
+  if (h > 0) return `${h}h ${m % 60}m`;
+  return `${m}m`;
+}
+
+// --- Crew list: built once, then only its numbers are updated ---
+let crewRows = [];
+function buildCrew() {
+  const pane = $("pane-crew");
+  pane.innerHTML = "";
+  crewRows = TIERS.map((tier, t) => {
+    const row = document.createElement("div");
+    row.className = "item";
+    row.innerHTML = `<div><h3><span class="nm"></span><span class="count"></span></h3><p class="ds"></p></div>
+      <button class="buy" id="buy-${tier.id}"><span class="pr"></span><small class="ct"></small></button>
+      <p class="rate"></p>`;
+    row.querySelector(".buy").addEventListener("click", () => buyTier(t));
+    pane.appendChild(row);
+    return row;
+  });
+  const note = document.createElement("p");
+  note.className = "note";
+  note.textContent = "Every copy you buy makes the next one 15% pricier. Upgrades double what each kind earns.";
+  pane.appendChild(note);
+}
+function updateCrew() {
+  // Show tiers you own, plus the next one as a teaser; hide the rest
+  let shownLocked = false;
+  TIERS.forEach((tier, t) => {
+    const row = crewRows[t];
+    const known = state.owned[t] > 0 || t === 0 || state.owned[t - 1] > 0;
+    row.hidden = !known && shownLocked;
+    if (!known) shownLocked = true;
+    row.classList.toggle("mystery", !known);
+    const count = buyCount(t);
+    const price = costOf(t, count);
+    const can = price <= state.cash && (state.buyMode !== "max" || maxAffordable(t) > 0);
+    row.classList.toggle("affordable", can);
+    row.querySelector(".nm").textContent = known ? tier.name : "???";
+    row.querySelector(".count").textContent = state.owned[t] ? "×" + state.owned[t] : "";
+    row.querySelector(".ds").textContent = known ? tier.desc : "Unlocks after your first " + TIERS[t - 1].name + ".";
+    row.querySelector(".rate").textContent = known
+      ? `${money(tierIncome(t))}/sec each` + (state.owned[t] ? ` · ${money(tierIncome(t) * state.owned[t])}/sec total` : "")
+      : "";
+    const btn = row.querySelector(".buy");
+    btn.setAttribute("aria-disabled", String(!can));
+    btn.querySelector(".pr").textContent = money(price);
+    btn.querySelector(".ct").textContent = "buy " + count;
+  });
+}
+
+// --- Upgrade list: rebuilt only when the set of offered upgrades changes ---
+let upgradeKey = "";
+function updateUpgrades() {
+  const offered = UPGRADES.filter(upgradeAvailable);
+  const key = offered.map(u => u.id).join(",");
+  const affordable = offered.filter(u => u.cost <= state.cash).length;
+  $("upgBadge").hidden = affordable === 0;
+  $("upgBadge").textContent = affordable;
+  const pane = $("pane-upg");
+  if (key !== upgradeKey) {
+    upgradeKey = key;
+    pane.innerHTML = "";
+    if (!offered.length) {
+      pane.innerHTML = `<p class="note">No upgrades on offer yet. They show up as you earn more and own more crew.</p>`;
+    }
+    for (const u of offered) {
+      const row = document.createElement("div");
+      row.className = "item";
+      row.dataset.id = u.id;
+      row.innerHTML = `<div><h3></h3><p></p></div><button class="buy" id="up-${u.id}"><span class="pr"></span><small>buy</small></button>`;
+      row.querySelector("h3").textContent = u.name;
+      row.querySelector("p").textContent = u.desc;
+      row.querySelector(".pr").textContent = money(u.cost);
+      row.querySelector(".buy").addEventListener("click", () => buyUpgrade(u.id));
+      pane.appendChild(row);
+    }
+    const bought = Object.keys(state.upgrades).length;
+    const note = document.createElement("p");
+    note.className = "note";
+    note.textContent = `${bought} of ${UPGRADES.length} upgrades bought.`;
+    pane.appendChild(note);
+  }
+  for (const row of pane.querySelectorAll(".item")) {
+    const can = UPGRADE_BY_ID[row.dataset.id].cost <= state.cash;
+    row.classList.toggle("affordable", can);
+    row.querySelector(".buy").setAttribute("aria-disabled", String(!can));
+  }
+}
+
+function updateFranchise() {
+  const gain = repGain();
+  $("repNow").textContent = state.rep;
+  $("repPct").textContent = Math.round(REP_BONUS * 100) + "%";
+  $("repGain").textContent = gain;
+  const nextStar = repTotalFor(state.earnedAll) + 1;
+  $("repNext").textContent = `Next star at ${money(earnedForRep(nextStar))} earned in total. You've earned ${money(state.earnedAll)}.`;
+  $("prestige").setAttribute("aria-disabled", String(gain < 1));
+  // Leave the "Tap again to sell" label alone while it's waiting for the second press
+  if ($("prestige").dataset.armed !== "1") {
+    $("prestige").textContent = gain < 1 ? "Not worth selling yet" : `Sell for ${gain} star${gain > 1 ? "s" : ""}`;
+  }
+}
+
+function updateStats() {
+  const items = [
+    ["Cash", money(state.cash)],
+    ["Earned this run", money(state.earnedRun)],
+    ["Earned ever", money(state.earnedAll)],
+    ["Income", money(incomeNow()) + "/sec"],
+    ["Reputation", "★ " + state.rep + ` (+${Math.round(state.rep * REP_BONUS * 100)}%)`],
+    ["Taps", state.stats.taps.toLocaleString("en-US")],
+    ["Calls closed", state.stats.calls.toLocaleString("en-US")],
+    ["Rush calls taken", state.stats.rushes],
+    ["Times sold", state.stats.sells],
+    ["Playing since", new Date(state.stats.startedAt).toLocaleDateString()],
+  ];
+  $("stats").innerHTML = items.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
+}
+
+// render(false): cheap, every frame (money and ticket). render(true): lists too.
+function render(full) {
+  $("cash").textContent = money(state.cash);
+  $("ips").textContent = money(incomeNow()) + " / sec";
+  $("tapv").textContent = money(tapValue()) + " per tap";
+  const ot = Math.ceil((state.overtimeUntil - Date.now()) / 1000);
+  $("ot").textContent = ot > 0 ? `OVERTIME ${OT_MULT}x · ${ot}s` : "";
+  $("tkNum").textContent = "SC-" + String(state.callNo).padStart(5, "0");
+  $("tkWhere").textContent = PLACES[state.place % PLACES.length];
+  $("tkIssue").textContent = ISSUES[state.issue % ISSUES.length];
+  $("tkBar").style.width = (state.callStep / STEPS_PER_CALL * 100) + "%";
+  const rush = $("rush");
+  rush.hidden = !rushShownAt;
+  if (rushShownAt) $("rushLeft").textContent = `Tap to take it · ${Math.ceil(RUSH_VISIBLE - (Date.now() - rushShownAt) / 1000)}s`;
+  for (const b of document.querySelectorAll("#buymode button")) b.setAttribute("aria-pressed", String(b.dataset.mode === state.buyMode));
+  if (!full) return;
+  updateCrew();
+  updateUpgrades();
+  updateFranchise();
+  if ($("pane-set").classList.contains("on")) updateStats();
+}
+function rebuildLists() { upgradeKey = ""; render(true); }
+
+// Floating "+$12" text that rises from where you tapped
+function floatText(text, x, y) {
+  const box = $("floats").getBoundingClientRect();
+  const el = document.createElement("div");
+  el.className = "float";
+  el.textContent = text;
+  const start = $("start").getBoundingClientRect();
+  const px = (x ?? start.left + start.width / 2) - box.left + (Math.random() * 60 - 30);
+  const py = (y ?? start.top) - box.top - 20;
+  el.style.left = Math.max(4, Math.min(box.width - 160, px - 40)) + "px";
+  el.style.top = py + "px";
+  $("floats").appendChild(el);
+  setTimeout(() => el.remove(), 1000);
+}
+
+let toastTimer = 0;
+function toast(text) {
+  const t = $("toast");
+  t.textContent = text;
+  t.classList.add("on");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("on"), 2200);
+}
+function showModal(title, text, amount) {
+  $("modalTitle").textContent = title;
+  $("modalText").textContent = text;
+  $("modalAmount").textContent = amount || "";
+  $("modalBack").classList.add("on");
+  $("modalOk").focus();
+}
+const modalOpen = () => $("modalBack").classList.contains("on");
+
+// --- The copier drawing (a canvas, redrawn every frame) ---
+const canvas = $("copier"), ctx = canvas.getContext("2d");
+let shakeTime = 0;           // seconds of shake left after a tap
+const sheets = [];           // sheets of paper flying out ({t: seconds since it started})
+let ledTime = 0;
+function drawCopier(dt) {
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+    canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  shakeTime = Math.max(0, shakeTime - dt);
+  ledTime += dt;
+  // Fit a copier shape (designed on a 300x200 grid) into the canvas
+  const s = Math.min(w / 320, h / 210);
+  const ox = (w - 300 * s) / 2 + (shakeTime > 0 ? (Math.random() * 4 - 2) : 0);
+  const oy = (h - 200 * s) / 2;
+  const R = (x, y, ww, hh, color, r = 4) => {
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.roundRect(ox + x * s, oy + y * s, ww * s, hh * s, r * s); ctx.fill();
+  };
+  R(40, 190, 220, 8, "rgba(0,0,0,.35)", 4);      // floor shadow
+  R(60, 70, 180, 122, "#dcd7cd", 8);              // main body
+  R(60, 150, 180, 42, "#cfc9bd", 6);              // paper drawer area
+  R(70, 158, 160, 12, "#bdb6a8", 3);              // drawer 1
+  R(70, 174, 160, 12, "#bdb6a8", 3);              // drawer 2
+  R(56, 40, 188, 32, "#cfc9bd", 6);               // document feeder on top
+  R(80, 30, 120, 12, "#e9e5dc", 3);               // feeder input tray
+  R(240, 96, 40, 6, "#bdb6a8", 2);                // output tray
+  R(178, 76, 56, 30, "#26292d", 4);               // control panel
+  R(184, 81, 30, 18, "#2c4c53", 2);               // tiny LCD
+  // Status LED: blinks amber while a ticket is open, green between
+  ctx.fillStyle = state.callStep > 0 && Math.floor(ledTime * 3) % 2 ? "#e7a23b" : "#2f9e5b";
+  ctx.beginPath(); ctx.arc(ox + 224 * s, oy + 90 * s, 4 * s, 0, Math.PI * 2); ctx.fill();
+  // Jam door outline
+  ctx.strokeStyle = "#b3ac9e"; ctx.lineWidth = 2 * s;
+  ctx.strokeRect(ox + 72 * s, oy + 82 * s, 92 * s, 60 * s);
+  // Sheets of paper sliding out of the output tray and falling off
+  for (const sh of sheets) {
+    sh.t += dt;
+    const p = Math.min(1, sh.t / 0.35);                        // slide-out part
+    const fall = Math.max(0, sh.t - 0.35);
+    const x = 238 + p * 40 + fall * 40, y = 90 + fall * fall * 260;
+    ctx.save();
+    ctx.translate(ox + x * s, oy + y * s);
+    ctx.rotate(fall * 2.2);
+    ctx.fillStyle = "#fbfaf6";
+    ctx.fillRect(-14 * s, -3 * s, 28 * s, 4 * s);
+    ctx.restore();
+  }
+  while (sheets.length && sheets[0].t > 1.5) sheets.shift();
+}
+
+
+/* =====================================================================
+   8. CONTROLS
+   Touch and mouse: just press things.
+   Keyboard:  Space = work the call, arrows = move between buttons,
+              Enter = press, R = take a rush call, 1-4 = tabs.
+   Controller: A = press, X = work the call, B = rush call,
+               LB/RB = switch tabs, Y = change buy amount,
+               D-pad or left stick = move between buttons.
+   ===================================================================== */
+
+// The green button. pointerdown (not click) so fast tapping on a touch
+// screen registers every tap with no delay.
+$("start").addEventListener("pointerdown", e => {
+  e.preventDefault();
+  if (modalOpen()) return;
+  tap(e.clientX, e.clientY);
+  $("start").classList.add("pressed");
+});
+for (const ev of ["pointerup", "pointerleave", "pointercancel"]) $("start").addEventListener(ev, () => $("start").classList.remove("pressed"));
+// Enter/Space on a focused Start button arrive as "click" with no pointer
+$("start").addEventListener("click", e => { if (e.detail === 0) tap(); });
+
+$("rush").addEventListener("click", takeRush);
+$("modalOk").addEventListener("click", () => { $("modalBack").classList.remove("on"); $("start").focus(); });
+
+// Tabs
+const TAB_ORDER = ["crew", "upg", "fran", "set"];
+function showTab(name) {
+  for (const tab of document.querySelectorAll(".tab")) tab.setAttribute("aria-selected", String(tab.dataset.pane === name));
+  for (const id of TAB_ORDER) $("pane-" + id).classList.toggle("on", id === name);
+  render(true);
+}
+for (const tab of document.querySelectorAll(".tab")) tab.addEventListener("click", () => showTab(tab.dataset.pane));
+const currentTab = () => TAB_ORDER.find(id => $("pane-" + id).classList.contains("on"));
+function cycleTab(step) {
+  const i = TAB_ORDER.indexOf(currentTab());
+  showTab(TAB_ORDER[(i + step + TAB_ORDER.length) % TAB_ORDER.length]);
+}
+
+// Buy amount
+function setBuyMode(mode) { state.buyMode = mode; render(true); }
+for (const b of document.querySelectorAll("#buymode button")) b.addEventListener("click", () => setBuyMode(b.dataset.mode));
+function cycleBuyMode() {
+  const modes = ["1", "10", "max"];
+  setBuyMode(modes[(modes.indexOf(state.buyMode) + 1) % modes.length]);
+  toast("Buying " + (state.buyMode === "max" ? "as many as you can afford" : "x" + state.buyMode));
+}
+
+$("prestige").addEventListener("click", () => {
+  if (repGain() < 1) { toast("Earn more before selling: you'd get no stars"); return; }
+  armOrRun($("prestige"), "Tap again to sell everything", prestige);
+});
+$("wipe").addEventListener("click", () => armOrRun($("wipe"), "Tap again to wipe it all", () => {
+  state = freshState();
+  rebuildLists();
+  saveNow();
+  toast("Save wiped. Fresh start.");
+}));
+// Two-step buttons: the first press changes the label, the second (within 4s) does it.
+// (The page can't show a browser "Are you sure?" box, so this is the confirm.)
+function armOrRun(btn, armedText, action) {
+  if (btn.dataset.armed === "1") {
+    btn.dataset.armed = "";
+    btn.textContent = btn.dataset.label;
+    action();
+    render(true);
+    return;
+  }
+  btn.dataset.armed = "1";
+  btn.dataset.label = btn.textContent;
+  btn.textContent = armedText;
+  setTimeout(() => { if (btn.dataset.armed === "1") { btn.dataset.armed = ""; render(true); if (btn.id === "wipe") btn.textContent = "Wipe my save"; } }, 4000);
+}
+
+$("copySave").addEventListener("click", async () => {
+  const code = encodeSave(state);
+  try { await navigator.clipboard.writeText(code); toast("Save code copied"); }
+  catch { $("importBox").value = code; $("importBox").select(); toast("Couldn't copy: the code is in the box, copy it from there"); }
+});
+$("importSave").addEventListener("click", () => {
+  try {
+    const s = decodeSave($("importBox").value);
+    s.lastTick = Date.now();       // no offline earnings for pasted saves
+    adopt(s, "Save loaded");
+    saveNow();
+    $("importBox").value = "";
+  } catch { toast("That doesn't look like a save code"); }
+});
+
+// --- Keyboard ---
+document.addEventListener("keydown", e => {
+  if (e.target.tagName === "TEXTAREA") return;
+  if (modalOpen()) {
+    if (["Enter", " ", "Escape"].includes(e.key)) { e.preventDefault(); $("modalOk").click(); }
+    return;
+  }
+  const map = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" };
+  if (map[e.key]) { e.preventDefault(); moveFocus(map[e.key]); return; }
+  if (e.key === " " && document.activeElement?.tagName !== "BUTTON") { e.preventDefault(); tap(); return; }
+  if (e.key === "r" || e.key === "R") takeRush();
+  if (e.key >= "1" && e.key <= "4") showTab(TAB_ORDER[Number(e.key) - 1]);
+});
+
+// Move keyboard/controller focus to the nearest visible button in a direction.
+function moveFocus(dir) {
+  const buttons = [...document.querySelectorAll("button")].filter(b => b.offsetParent !== null && !b.hidden);
+  const cur = document.activeElement && buttons.includes(document.activeElement) ? document.activeElement : null;
+  if (!cur) { $("start").focus(); return; }
+  const a = cur.getBoundingClientRect();
+  const ax = a.left + a.width / 2, ay = a.top + a.height / 2;
+  let best = null, bestScore = Infinity;
+  for (const b of buttons) {
+    if (b === cur) continue;
+    const r = b.getBoundingClientRect();
+    const bx = r.left + r.width / 2, by = r.top + r.height / 2;
+    const dx = bx - ax, dy = by - ay;
+    // must actually be in that direction
+    if ((dir === "left" && dx >= -4) || (dir === "right" && dx <= 4) || (dir === "up" && dy >= -4) || (dir === "down" && dy <= 4)) continue;
+    // prefer straight ahead: sideways distance counts 3x
+    const along = dir === "left" || dir === "right" ? Math.abs(dx) : Math.abs(dy);
+    const side = dir === "left" || dir === "right" ? Math.abs(dy) : Math.abs(dx);
+    const score = along + side * 3;
+    if (score < bestScore) { bestScore = score; best = b; }
+  }
+  if (best) { best.focus(); best.scrollIntoView({ block: "nearest" }); }
+}
+
+// --- Game controller (standard layout: 0=A 1=B 2=X 3=Y 4=LB 5=RB 12-15=D-pad) ---
+const padPrev = {};          // which buttons were down last frame, so a hold = one press
+let stickHeld = "";
+function pollGamepads() {
+  if (!navigator.getGamepads) return;
+  for (const pad of navigator.getGamepads()) {
+    if (!pad || pad.mapping !== "standard") continue;
+    $("padHints").classList.add("on");
+    const prev = padPrev[pad.index] || [];
+    const down = pad.buttons.map(b => b.pressed);
+    const pressed = i => down[i] && !prev[i];
+    if (modalOpen()) {
+      if (pressed(0) || pressed(1)) $("modalOk").click();
+    } else {
+      if (pressed(0)) { const el = document.activeElement; if (el && el.tagName === "BUTTON") el.click(); else tap(); }
+      if (pressed(2)) tap();
+      if (pressed(1)) takeRush();
+      if (pressed(3)) cycleBuyMode();
+      if (pressed(4)) cycleTab(-1);
+      if (pressed(5)) cycleTab(1);
+      if (pressed(12)) moveFocus("up");
+      if (pressed(13)) moveFocus("down");
+      if (pressed(14)) moveFocus("left");
+      if (pressed(15)) moveFocus("right");
+      // left stick works like the D-pad (one move per push)
+      const [x, y] = pad.axes;
+      const dir = Math.abs(x) > 0.6 || Math.abs(y) > 0.6 ? (Math.abs(x) > Math.abs(y) ? (x > 0 ? "right" : "left") : (y > 0 ? "down" : "up")) : "";
+      if (dir && dir !== stickHeld) moveFocus(dir);
+      stickHeld = dir;
+    }
+    padPrev[pad.index] = down;
+  }
+}
+
+
+/* =====================================================================
+   9. START UP
+   ===================================================================== */
+function start(hotData) {
+  // After a live update of this page, carry on exactly where you were.
+  // Otherwise load this browser's save (if any) and pay out time away.
+  const hot = hotData && hotData.state ? (() => { try { return validState(hotData.state); } catch { return null; } })() : null;
+  if (hot) state = hot;
+  else {
+    const local = readLocal();
+    if (local) state = local;
+    // Brand-new game on this device: mark it as never saved, so a save already
+    // in your account (from another device) always wins over this empty one.
+    else state.savedAt = 0;
+  }
+  buildCrew();
+  catchUp(!hot);
+  rebuildLists();
+  // (No automatic focus: on touch screens it would draw a focus ring. The
+  //  first arrow key or D-pad press puts focus on the green button.)
+  requestAnimationFrame(frame);
+  connectCloud();
+}
+window.claude?.hot?.snapshot?.(() => ({ state }));
+if (window.claude?.hot?.ready) window.claude.hot.ready(start);
+else start(window.claude?.hot?.data ?? {});
+
+// Handles for automated tests (harmless in normal play)
+window.PJ = { get state() { return state; }, set state(s) { state = s; }, TIERS, UPGRADES, tap, buyTier, buyUpgrade,
+  baseIncome, tapValue, costOf, maxAffordable, repGain, takeRush, prestige, earnBetween, upgradeAvailable, validState,
+  encodeSave, decodeSave, catchUp, render, rebuildLists, short, saveNow };
+</script>
+</body>
+</html>

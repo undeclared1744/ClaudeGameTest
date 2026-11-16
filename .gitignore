@@ -1,0 +1,11 @@
+# Python
+__pycache__/
+.venv/
+
+# Emberdeep build output (rebuild with build.sh)
+build/
+dist/
+*.spec
+
+# Screenshots the tests write
+*/tests/shots/
