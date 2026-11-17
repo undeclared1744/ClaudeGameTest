@@ -41,8 +41,13 @@ with sync_playwright() as p:
     S = lambda expr: page.evaluate("() => " + expr)
     page.evaluate("() => { T.state.nextEventAt = Date.now() + 1e9; }")
 
-    ok(page.locator("#tab-invest").is_hidden(), "with no investments built, the Invest tab is hidden")
-    ok(S("T.tabOrder().length") == 5, "and the tab keys skip it (5 tabs)")
+    # These two only apply while no real investment is built yet. Once the
+    # game ships real modules (loans, stocks...) the tab is always there.
+    if S("T.MODULES.length") == 0:
+        ok(page.locator("#tab-invest").is_hidden(), "with no investments built, the Invest tab is hidden")
+        ok(S("T.tabOrder().length") == 5, "and the tab keys skip it (5 tabs)")
+    else:
+        print("SKIP the empty-Invest-tab checks: real investments are built")
     page.evaluate(TEST_MODULE)
     ok(page.locator("#tab-invest").is_visible() and S("T.tabOrder().includes('invest')"), "registering a module shows the Invest tab")
     page.click("#tab-invest"); page.wait_for_timeout(400)
@@ -61,7 +66,7 @@ with sync_playwright() as p:
     ok(S("T.validState(JSON.parse(localStorage.getItem('selfMadeTycoon.save.v1'))).inv.piggy.coins") == 77, "its state is saved and loaded")
     ok(S("T.validState({ cash: 1, biz: [], inv: { piggy: { coins: 'lots' } } }).inv.piggy.coins") == 0, "a bad saved value falls back to fresh() when validate() throws")
     ok(S("T.validState({ cash: 1, biz: [] }).inv.piggy.coins") == 0, "an old save without it starts fresh")
-    ok(S("Object.keys(T.validState({ cash: 1, biz: [], inv: { ghost: { a: 1 } } }).inv).join()") == "piggy", "state for a module that no longer exists is dropped")
+    ok(S("(() => { const k = Object.keys(T.validState({ cash: 1, biz: [], inv: { ghost: { a: 1 } } }).inv); return !k.includes('ghost') && k.includes('piggy'); })()"), "state for a module that no longer exists is dropped")
 
     # retire resets it
     page.evaluate("() => { T.state.earnedAll = 4e9; T.inv('piggy').coins = 5; T.retire(); }")

@@ -43,6 +43,10 @@ These were real bugs or problems found by the tests or the screenshot review bef
   - Amounts just under a million showed as "$1000K".
   - A buyout offer still paid out for a business you had already sold.
   - The first sale prices let you buy a plain business and sell it straight back at a profit. Sales now go by the business's market price, not its income.
+  - Investing: the first bond rates had a corporate bond beating the index fund, so a safe bond paid better than stocks. Rates were cut so the order is the real one: bonds, then the index fund, then single stocks, then running a business.
+  - Loans: the "next payment" amount wrapped onto three lines on a phone. The due time now has its own small line.
+  - Two shared tests assumed no investments existed: one counted exactly 6 event types, and one expected the Invest tab to be hidden. Both now allow for real investments.
+  - A click-through check failed about 1 run in 4: the first test purchase could hide a problem, and its "Surprise!" notice covered the tabs the next step clicked.
   - **Real estate** (ported from a half-built version):
     - Mortgage payments and underwater sales could push your cash below zero. Missed payments now pile up as arrears and lead to foreclosure, and a sale that can't cover the loan is a short sale.
     - A tenant's offer stopped working after the game reloaded, because it looked for the exact same property object. It now looks the property up by its id.
@@ -50,6 +54,7 @@ These were real bugs or problems found by the tests or the screenshot review bef
     - The market rose so fast it hit its 6x ceiling within a day of play, so the swings stopped mattering. Its upward drift was halved.
     - Damaged saves could hold two properties with the same id, a loan that could never be paid off, or a market clock stuck far in the future. Each is repaired on load.
     - Two checks failed now and then because rent kept arriving between reading a number and checking it. Those checks now read everything in one go.
+    - After merging with loans, stocks and bonds, two loan checks failed 2 runs in 3. The test ended the grace period and then worked out which business the bank should take in a separate step, so the game sometimes took it first. Both now happen in one step. This was a timing race in the test, not a game bug.
 
 ## What hasn't been tested
 

@@ -32,25 +32,21 @@ Like a real small-business buyer, you can buy a business with problems cheaply, 
 
 You get better at finding deals the more of them you do. Checking, buying, fixing and selling earn XP, and the XP stays with you when you retire. There are six levels: cheaper due diligence, an extra listing, a "Something feels off" warning on listings that hide a problem, lower asking prices, off-market deals with faster refreshes, and finally free due diligence with one more listing.
 
-## Real estate
+## Investing (Invest tab)
 
-The first investment on the Invest tab, open from the second tier (Small business owner). It's one card with one decision at a time: a single property is for sale, and you pass on it, buy it with cash, or buy it with a mortgage (20% down).
+Besides running businesses, you can put money to work the ways real entrepreneurs do. Each investment is one card with one decision. They're paced by the same table as the businesses (`TIER_PAYBACK`), so the order stays the real one at every stage of the game: bonds earn least, then the index fund, then single stocks, and running a business beats them all. Safer means less.
 
-- **Rent** comes in every second. Property pays back half as fast as a business of the same size, but it runs itself.
-- **The market** is one number that every rent and value follows. It moves every minute, up about 6% an hour on average, with swings. The card shows the last half hour.
-- **Mortgages** let you own more with the same cash, but the payment stays the same when the market drops. Run out of cash and the bank forecloses on the property losing you the most. Overpaying for a renovated place can make the payment bigger than the rent, and the listing says so.
-- **Condition:** fixer-uppers are cheap and rent for less. Renovating moves a property up a step (Fixer-upper, Dated, Good, Renovated), raising rent and value.
-- **Selling** costs 6% in fees and takes time. If the market crashed and the sale won't cover the loan, it's a short sale and the bank takes the loss.
-- **Tenant's offer:** a tenant may offer above market for the place they rent, with no fees.
-
-Everything is in `src/js/30-investments/real-estate.js`.
+- **Bank loans** (open at $2K earned). Borrow against your businesses: the bank lends up to half of what they'd sell for, a quarter of that per press. Interest is variable (35% of what a plain business at your tier earns per dollar) and comes out of your cash every 2 minutes. If you sell the businesses a loan rests on, the extra comes due with the next payment. Miss a payment and you get a 10% late fee and 60 seconds to find the money. After that the bank takes the business that best covers the debt, sells it for 75% of its value, and hands you what's left over. If there's nothing left to take, you go bankrupt: the loan is written off and no bank lends to you again until you retire.
+- **Stock market** (opens at $100K earned). A whole-market index fund (slow, about +25% per payback period on average) and four made-up stocks (+30 to +45%, with far bigger swings). Buy puts in a quarter of your cash, and Sell sells all of that one. Now and then the market crashes, and a "Buy the dip?" event follows. Only the profit from selling counts as earned.
+- **Bonds and CDs** (open at $2K earned). A 3-minute bank CD (the only one you can break early, losing the interest plus 5%), a 10-minute government bond, and a 30-minute corporate bond with the best rate but a 1 in 20 chance the company goes bust and pays back half. The interest is fixed when you buy. You can hold 8 at a time.
+- **Real estate** (opens at $2K earned). One property is for sale at a time: pass on it, buy it with cash, or buy it with a mortgage (20% down). Rent comes in every second, at half the rate of a business of the same size, and a market number that every rent and value follows moves every minute (up about 6% an hour on average, with swings). A mortgage payment stays the same when the market drops; run out of cash and the bank forecloses on the property losing you the most. Overpaying for a renovated place can make the payment bigger than the rent, and the listing says so. Renovating moves a property up a step (Fixer-upper, Dated, Good, Renovated). Selling costs 6% and takes time; if the sale won't cover the loan it's a short sale and the bank takes the loss. Now and then a tenant offers above market for the place, with no fees. All in `src/js/30-investments/real-estate.js`.
 
 ## Other features
 
 - **Expanding** adds levels to a business. Its income doubles at levels 10, 25, 50 and 100.
 - **Rising prices:** every level you own in an industry makes the next one in that industry 25% pricier.
 - **Nine sectors** (Food, Auto, Tech and so on), each with three "double this sector" upgrades.
-- **Events with choices:** buyout offers, a business going viral, surprise inspections, risky partner pitches, a hot economy, and lucky breaks.
+- **Events with choices:** buyout offers, a business going viral, surprise inspections, risky partner pitches, a hot economy, and lucky breaks. Investments can add their own, such as buying the dip after a crash.
 - **Retiring:** start over for Legacy stars, each worth +10% to everything.
 - **Your skyline:** a night skyline grows with one building for each business you own.
 - **Saving, away earnings and controls** work the same way as in Paper Jam Tycoon.
@@ -86,7 +82,7 @@ build.py                 bundles everything back into index.html
 
 After editing anything in `src/`, run `python3 build.py`, then commit both `src/` and `index.html`. `python3 build.py --check` fails if `index.html` is out of date. All the `.js` files end up in one `<script>` in A-to-Z order, sharing one scope.
 
-**Adding an investment type:** fill in its file in `src/js/30-investments/` and call `registerInvestment()`. It gets its own card on the Invest tab, its own part of the save, and hooks for earning money over time, events and stats, without editing the core files. `src/js/20-invest.js` documents every hook. The Invest tab stays hidden until at least one investment is built.
+**Adding an investment type:** fill in its file in `src/js/30-investments/` and call `registerInvestment()`. It gets its own card on the Invest tab, its own part of the save, and hooks for earning money over time, events and stats, without editing the core files. `src/js/20-invest.js` documents every hook. Every module lives in its own scope (`(() => { ... })();`), since all files share one `<script>` and two files using the same name would break the whole game.
 
 ## Tests
 
@@ -95,6 +91,9 @@ After editing anything in `src/`, run `python3 build.py`, then commit both `src/
 - `tests/play.py` runs 44 click-through checks and takes screenshots. It also generates 3000 listings to check every name and number.
 - `tests/business.py` runs 51 checks on hidden problems, due diligence, all four mini games, repairs and selling, on a Steam Deck sized screen and a phone.
 - `tests/scouting.py` runs 22 checks on Deal sense: XP, every level's perk, and keeping it through retiring and saving.
-- `tests/invest_host.py` runs 18 checks on the investment plug-in point, using a test investment, including that a broken one can't crash the game.
+- `tests/invest_host.py` runs 16 checks on the investment plug-in point, using a test investment, including that a broken one can't crash the game.
+- `tests/invest_loans.py` runs 47 checks on loans: the credit limit, interest, on-time and missed payments, the bank taking a business, bankruptcy, paying back, time away and saving.
+- `tests/invest_stocks.py` runs 33 checks on stocks: buying and selling, only profit counting as earned, growth and swings over 600 simulated periods, crashes and buying the dip, time away and saving.
+- `tests/invest_bonds.py` runs 35 checks on bonds and CDs: fixed interest, maturity, breaking a CD, corporate busts over 4000 bonds, the 8-bond limit, time away and saving.
 - `tests/invest_real_estate.py` runs 64 checks on real estate: buying, mortgages (against a step-by-step check), 8 hours away, foreclosure, renovating, selling, a short sale, the market, the tenant's offer, damaged saves, and the card on a phone.
 - `tests/sim.py` has a robot play 4 hours, both active and idle, and reports the pacing.
