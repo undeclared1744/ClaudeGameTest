@@ -47,6 +47,8 @@ These were real bugs or problems found by the tests or the screenshot review bef
   - Loans: the "next payment" amount wrapped onto three lines on a phone. The due time now has its own small line.
   - Two shared tests assumed no investments existed: one counted exactly 6 event types, and one expected the Invest tab to be hidden. Both now allow for real investments.
   - A click-through check failed about 1 run in 4: the first test purchase could hide a problem, and its "Surprise!" notice covered the tabs the next step clicked.
+  - Commodities and crypto (caught in the design review before testing): a plain random walk makes the average price creep up by itself, which would have made crypto free money. Each coin's drift now cancels that. Pop-up news only happens if you answer, so a news event about a coin you already held could have been dodged by ignoring it. Those events are now only offered for coins you don't hold.
+  - On a phone, a price's "▲ 2.0%" split across two lines, and a brand-new game showed empty charts. Each market now starts with 20 minutes of history.
 
 ## What hasn't been tested
 
