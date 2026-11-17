@@ -2230,25 +2230,196 @@ function updateInvest(full) {
     if (m && m.render && investUnlocked(m)) safely(m, () => m.render(card, full));
   }
 }
-
 /* =====================================================================
-   INVESTMENT: BONDS AND CDS  (not built yet)
-   Planned: Safe and low return. Money is locked up until the bond matures.
+   INVESTMENT: BONDS AND CDS
+   The safe end of investing: lend your money to a bank, the government
+   or a big company for a set time, and get it back with interest.
+   The catch is that it's LOCKED UP until the day it matures.
 
-   To build it, replace this comment's "not built yet" and call
-   registerInvestment() (see 20-invest.js for every hook), for example:
+   How it plays (one card, one decision: which one to buy):
+   - Bank CD: short, lowest rate. The only one you can get out of early,
+     and that costs you all the interest plus CD_BREAK_FEE of what you put in.
+   - Government bond: longer, a bit more, can't be cashed early.
+   - Corporate bond: longest and best rate, but CORP_DEFAULT_CHANCE of the
+     company going bust, which pays back only CORP_RECOVERY of your money.
+     (A higher rate always means more risk somewhere. That's the lesson.)
+   - Shares are set so the order is the real one: CD < government bond <
+     corporate bond (even after busts) < index fund < single stocks <
+     running a business. Safer means less.
+   - Buy puts a quarter of your cash in. The interest is fixed the moment
+     you buy, and paid with your money back on the day it matures.
+     Interest counts as earned; getting your own money back doesn't.
 
-     registerInvestment({
-       id: "bonds", name: "Bonds and CDs", order: 40, unlockTier: 1,
-       fresh: () => ({ }),
-       validate: saved => ({ }),
-       earn(seconds) { return 0; },
-       render(card, full) { },
-     });
+   Pace: the rate follows the game's pacing table. Interest over the term
+   = rate share x (term / one payback period at your tier), with the
+   payback period from TIER_PAYBACK (tier 2 at the lowest, so the first
+   bonds don't pay silly numbers). A business would earn 100% per period,
+   so bonds always earn less than running a business: they're for cash
+   you're saving up and don't want sitting idle.
 
-   Keep everything for this investment in this file. Its tests go in
-   tests/invest_bonds.py and run on the built index.html.
+   Maturity uses real clock times, so a bond you buy before bed is
+   waiting for you in the morning, however long you were gone.
    ===================================================================== */
+(() => {   // own scope: every file shares one <script>
+  // term: seconds until it matures. share: interest as a share of what a
+  // plain business would earn on the same money in that time.
+  const PRODUCTS = [
+    { id: "cd",   name: "Bank CD",         term: 180,  share: 0.10, desc: "Short and safe. You can break it early, but you lose the interest and a 5% fee." },
+    { id: "gov",  name: "Government bond", term: 600,  share: 0.15, desc: "Safe as it gets. Locked until it matures." },
+    { id: "corp", name: "Corporate bond",  term: 1800, share: 0.25, desc: "Best rate, but about 1 in 20 companies go bust and pay back only half." },
+  ];
+  const PR = Object.fromEntries(PRODUCTS.map(p => [p.id, p]));
+  const BUY_SHARE = 0.25;           // Buy puts this share of your cash in
+  const MIN_BUY = 10;
+  const MAX_HOLD = 8;               // keeps the list short on a phone
+  const CD_BREAK_FEE = 0.05;
+  const CORP_DEFAULT_CHANCE = 0.05;
+  const CORP_RECOVERY = 0.5;
+
+  const B = () => inv("bonds");
+  const period = () => TIER_PAYBACK[Math.max(2, tierUnlocked())];
+  // Interest rate for the whole term if you bought product p right now
+  const rateFor = p => p.share * p.term / period();
+  const buyAmount = () => state.cash * BUY_SHARE;
+  const termText = p => `${p.term / 60} min`;     // terms are whole minutes
+  const pctText = r => (r * 100 >= 10 ? Math.round(r * 100) : (r * 100).toFixed(1)) + "%";
+
+  // ---- Actions ----
+  function buy(id) {
+    const p = PR[id], s = B(), amount = buyAmount();
+    if (!p) return false;
+    if (s.held.length >= MAX_HOLD) { toast(`You can hold ${MAX_HOLD} at a time. Wait for one to mature.`); return false; }
+    if (amount < MIN_BUY) { toast(`You need at least ${money(MIN_BUY / BUY_SHARE)} in cash to buy`); return false; }
+    state.cash -= amount;
+    const now = Date.now();
+    s.held.push({ id: s.nextId++, p: id, amount, interest: amount * rateFor(p), boughtAt: now, matures: now + p.term * 1000 });
+    toast(`Bought a ${p.name.toLowerCase()} for ${money(amount)}. It pays ${money(amount * rateFor(p))} in ${termText(p)}.`);
+    dirty = true;
+    render(true);
+    return true;
+  }
+  // Only CDs can be broken: you get your money back minus the fee, no interest
+  function breakCd(holdId) {
+    const s = B(), h = s.held.find(x => x.id === holdId);
+    if (!h || h.p !== "cd") return false;
+    const back = h.amount * (1 - CD_BREAK_FEE);
+    state.cash += back;                      // your own money coming back isn't "earned"
+    s.held = s.held.filter(x => x !== h);
+    toast(`CD broken early: ${money(back)} back (${money(h.amount - back)} fee, no interest)`);
+    dirty = true;
+    render(true);
+    return true;
+  }
+  // Pay out everything that has matured by `now`. Several at once (after
+  // time away) get one combined message.
+  function matureDue(now) {
+    const s = B();
+    const due = s.held.filter(h => now >= h.matures);
+    if (!due.length) return 0;
+    let paid = 0, busts = 0;
+    for (const h of due) {
+      if (h.p === "corp" && Math.random() < CORP_DEFAULT_CHANCE) {   // the company went bust
+        state.cash += h.amount * CORP_RECOVERY;
+        s.lost += h.amount * (1 - CORP_RECOVERY);
+        s.defaults++;
+        busts++;
+        paid += h.amount * CORP_RECOVERY;
+      } else {
+        state.cash += h.amount;              // your money back
+        addCash(h.interest);                 // the interest is real earnings
+        s.interestEarned += h.interest;
+        paid += h.amount + h.interest;
+      }
+    }
+    s.held = s.held.filter(h => now < h.matures);
+    toast(busts ? `A company you lent to went bust and paid back only half. Bonds paid ${money(paid)} in all.`
+                : `${due.length > 1 ? due.length + " bonds" : "Your " + PR[due[0].p].name.toLowerCase()} matured: +${money(paid)}`);
+    dirty = true;
+    return paid;
+  }
+
+  // ---- Drawing the card ----
+  const css = document.createElement("style");
+  css.textContent = `
+    .bnd-prod { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: center; border-top: 1px solid var(--rule); padding-top: 8px; }
+    .bnd-prod h3 { margin: 0; font-size: 19px; line-height: 1.05; }
+    .bnd-prod .sub { font-size: 12px; color: var(--muted); }
+    .bnd-prod .rate { font: 13px var(--mono); }
+    .bnd-prod .smallbtn { grid-row: 1 / span 3; grid-column: 2; min-width: 104px; }
+    .bnd-held { display: grid; gap: 6px; }
+    .bnd-h { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 8px; font: 13px var(--mono); background: var(--paper); border-radius: 8px; padding: 6px 10px; }
+    .bnd-h .left { color: var(--muted); grid-column: 1; }
+    .bnd-h .smallbtn { grid-row: 1 / span 2; grid-column: 2; }
+    .bnd-h .smallbtn { padding: 2px 8px; font: 700 13px var(--body); }`;
+  document.head.appendChild(css);
+
+  let heldKey = "";
+  function drawCard(card, full) {
+    const s = B(), now = Date.now();
+    if (full && !card.querySelector(".bnd-prod")) {
+      heldKey = "";
+      card.innerHTML = `<h2 class="cond">Bonds and CDs</h2>
+        <p>Lend your money out for a set time and get it back with interest. Safe and steady, but it's locked up until it matures,
+        and it earns less than running a business. Good for cash you're saving up. Buy puts in a quarter of your cash.</p>` +
+        PRODUCTS.map(p => `<div class="bnd-prod" data-id="${p.id}">
+          <h3 class="cond">${esc(p.name)}</h3>
+          <button class="smallbtn" id="bnd-buy-${p.id}">Buy</button>
+          <div class="sub">${esc(p.desc)}</div><div class="rate"></div></div>`).join("") +
+        `<div class="bnd-held" id="bndHeld"></div><p class="note" id="bndNote"></p>`;
+      for (const p of PRODUCTS) card.querySelector(`#bnd-buy-${p.id}`).addEventListener("click", () => buy(p.id));
+    }
+    if (!card.querySelector(".bnd-prod")) return;
+    const amt = buyAmount(), full8 = s.held.length >= MAX_HOLD;
+    if (full) for (const row of card.querySelectorAll(".bnd-prod")) {
+      const p = PR[row.dataset.id], r = rateFor(p);
+      row.querySelector(".rate").textContent = `+${pctText(r)} in ${termText(p)}` + (amt >= MIN_BUY ? ` · ${money(amt)} becomes ${money(amt * (1 + r))}` : "");
+      const btn = row.querySelector(".smallbtn");
+      btn.textContent = amt >= MIN_BUY ? `Buy ${money(amt)}` : "Buy";
+      btn.setAttribute("aria-disabled", String(amt < MIN_BUY || full8));
+    }
+    // What you hold: rebuilt only when the list changes; the countdowns update every frame
+    const box = card.querySelector("#bndHeld");
+    const key = s.held.map(h => h.id).join(",");
+    if (key !== heldKey) {
+      heldKey = key;
+      box.innerHTML = s.held.map(h => `<div class="bnd-h" data-id="${h.id}"><span>${esc(PR[h.p].name)}: ${money(h.amount)} + ${money(h.interest)}</span>` +
+        `<span class="left"></span>${h.p === "cd" ? `<button class="smallbtn" id="bnd-break-${h.id}">Break</button>` : ""}</div>`).join("");
+      for (const h of s.held) box.querySelector(`#bnd-break-${h.id}`)?.addEventListener("click", () => breakCd(h.id));
+    }
+    for (const row of box.children) {
+      const h = s.held.find(x => x.id === Number(row.dataset.id));
+      if (h) row.querySelector(".left").textContent = `matures in ${duration(Math.max(0, h.matures - now) + 999)}`;
+    }
+    card.querySelector("#bndNote").textContent = full8 ? `That's the most you can hold (${MAX_HOLD}). More can be bought as these mature.`
+      : s.interestEarned ? `Interest earned so far: ${money(s.interestEarned)}.` + (s.defaults ? ` Companies gone bust on you: ${s.defaults}.` : "") : "";
+  }
+
+  registerInvestment({
+    id: "bonds", name: "Bonds and CDs", order: 40, unlockTier: 1,
+    fresh: () => ({ held: [], nextId: 1, interestEarned: 0, lost: 0, defaults: 0 }),
+    validate(saved) {
+      const pos = v => Number.isFinite(v) && v >= 0;
+      const held = (Array.isArray(saved.held) ? saved.held : [])
+        .filter(h => h && PR[h.p] && pos(h.amount) && pos(h.interest) && pos(h.matures) && pos(h.boughtAt))
+        // a bond can't mature later than its own term allows (guards against a hand-edited save)
+        .map(h => ({ id: Math.floor(Number(h.id)) || 0, p: h.p, amount: h.amount, interest: h.interest, boughtAt: h.boughtAt,
+                     matures: Math.min(h.matures, h.boughtAt + PR[h.p].term * 1000) }))
+        .slice(0, MAX_HOLD);
+      held.forEach((h, i) => { if (!h.id) h.id = 1e6 + i; });
+      return { held, nextId: Math.max(pos(saved.nextId) ? Math.floor(saved.nextId) : 1, ...held.map(h => h.id + 1), 1),
+        interestEarned: pos(saved.interestEarned) ? saved.interestEarned : 0, lost: pos(saved.lost) ? saved.lost : 0,
+        defaults: pos(saved.defaults) ? Math.floor(saved.defaults) : 0 };
+    },
+    tick(now) { matureDue(now); },
+    render: drawCard,
+    stats: () => {
+      const s = B();
+      const held = s.held.reduce((sum, h) => sum + h.amount, 0);
+      return held || s.interestEarned || s.defaults ? [["Bonds and CDs held", money(held)], ["Interest from bonds", money(s.interestEarned)]] : [];
+    },
+    test: { PRODUCTS, buy, breakCd, matureDue, rateFor, buyAmount, period, MAX_HOLD, CD_BREAK_FEE, CORP_DEFAULT_CHANCE, CORP_RECOVERY },
+  });
+})();
 
 /* =====================================================================
    INVESTMENT: COMMODITIES  (not built yet)
@@ -2553,26 +2724,268 @@ function updateInvest(full) {
     test: { FR, FRANCHISABLE, launch, launchCost, notReady, ready, royaltyPer, capOf, earn: earnAndTrack, hurt, rogueEvent },
   });
 })();
-
 /* =====================================================================
-   INVESTMENT: BANK LOANS AND LEVERAGE  (not built yet)
-   Planned: Borrow against your businesses, with interest due every so often. Miss
-   a payment and the bank takes a business.
+   INVESTMENT: BANK LOANS AND LEVERAGE
+   The way most real entrepreneurs grow faster than their savings allow:
+   borrow against what you already own, buy more with it, and hope the
+   new businesses earn more than the interest.
 
-   To build it, replace this comment's "not built yet" and call
-   registerInvestment() (see 20-invest.js for every hook), for example:
+   How it plays (one card, one decision: borrow or pay back):
+   - The bank lends up to LOAN_LTV (half) of what your businesses would
+     sell for today (saleValue in 06-fixsell.js). That's your COLLATERAL:
+     grow your businesses and you can borrow more.
+   - Interest piles up every second you owe money. Every LOAN_PAY_SECONDS
+     a payment comes due, and the bank takes it from your cash by itself.
+   - The rate is VARIABLE and follows your size: it's LOAN_COST_SHARE of
+     what a plain business at your current tier earns on the same money
+     (see TIER_PAYBACK). So leverage pays when you put the money to work,
+     and costs you when it just sits there.
+   - Owe more than your collateral allows (say you sold a business the
+     loan was resting on)? The extra is added to your next payment. In
+     real life that's a "margin call".
+   - Can't cover a payment? You get a late notice, a LATE_FEE, and
+     LOAN_GRACE_SECONDS to find the money (it's paid the moment you have
+     it). Still short at the end: the bank takes a business, sells it at a
+     fire-sale price, keeps what you owe and gives you what's left.
+   - Nothing left to take? The bank writes the loan off, takes what cash
+     you have, and won't lend to you again this run (bankruptcy).
 
-     registerInvestment({
-       id: "loans", name: "Bank loans and leverage", order: 20, unlockTier: 1,
-       fresh: () => ({ }),
-       validate: saved => ({ }),
-       earn(seconds) { return 0; },
-       render(card, full) { },
-     });
-
-   Keep everything for this investment in this file. Its tests go in
-   tests/invest_loans.py and run on the built index.html.
+   All the timing uses real clock times (Date.now()), so it carries on
+   while you're away. Interest only builds up over the same capped time
+   (8 hours) your businesses earn for, and after time away you get the
+   same grace period before the bank acts.
    ===================================================================== */
+(() => {   // everything in its own scope: the build puts every file in one <script>
+  // ---- Tuning ----
+  const LOAN_LTV = 0.5;              // lend up to this share of your businesses' sale value
+  const LOAN_PAY_SECONDS = 120;      // a payment comes due this often
+  const LOAN_GRACE_SECONDS = 60;     // time to find the money after missing a payment
+  const LOAN_COST_SHARE = 0.35;      // interest = this share of what a plain business earns per $
+  const LATE_FEE = 0.10;             // share of a missed payment added on as a fee
+  const FIRE_SALE = 0.75;            // the bank sells a business it takes for 75% of its sale value
+  const BORROW_STEP = 0.25;          // each Borrow press takes this share of your credit limit
+  const MIN_BORROW = 50;             // smallest loan the bank bothers with
+
+  // Interest per second on each $1 owed. Tier 0 borrowers get tier 1
+  // pricing: the card only opens at tier 1, but this keeps it safe anyway.
+  const ratePerSec = () => LOAN_COST_SHARE / TIER_PAYBACK[Math.max(1, tierUnlocked())];
+  // What the bank thinks your businesses are worth (what you could sell them for)
+  const collateral = () => state.biz.reduce((sum, b) => sum + saleValue(b), 0);
+  const L = () => inv("loans");
+  // Most the bank will lend in total, and how much of that is still free
+  const creditLimit = () => (L().frozen ? 0 : collateral() * LOAN_LTV);
+  const available = () => Math.max(0, creditLimit() - L().debt);
+  // Owed above the limit: due with the next payment
+  const overLimit = () => Math.max(0, L().debt - collateral() * LOAN_LTV);
+  // The payment the bank wants right now: interest so far + anything over the limit
+  const dueNow = () => L().accrued + overLimit();
+  // What one press of Borrow takes
+  const borrowStep = () => Math.min(available(), Math.max(MIN_BORROW, creditLimit() * BORROW_STEP));
+  const roundUp = n => Math.ceil(n * 100) / 100;      // never leave a fraction of a cent owing
+
+  // ---- Actions ----
+  function borrow() {
+    const s = L(), amount = borrowStep();
+    if (s.frozen) { toast("No bank will lend to you again this run"); return false; }
+    if (s.lateUntil) { toast("Catch up on your late payment first"); return false; }
+    if (amount < MIN_BORROW) { toast(state.biz.length ? "You've borrowed all the bank will lend. Grow your businesses to borrow more." : "Banks lend against businesses. Buy one first."); return false; }
+    s.debt += amount;
+    state.cash += amount;                 // borrowed money is cash to spend, but it isn't "earned"
+    s.borrowed += amount;
+    if (!s.dueAt) s.dueAt = Date.now() + LOAN_PAY_SECONDS * 1000;   // first payment in one period
+    toast(`The bank lent you ${money(amount)}. Put it to work!`);
+    dirty = true;
+    render(true);
+    return true;
+  }
+  // Pay off as much as your cash allows: interest first, then the loan itself
+  function repay() {
+    const s = L();
+    const owed = s.accrued + s.debt;
+    const pay = Math.min(state.cash, owed);
+    if (pay <= 0) { toast(owed > 0 ? "No cash to pay with" : "You don't owe anything"); return false; }
+    state.cash -= pay;
+    const toInterest = Math.min(pay, s.accrued);
+    s.accrued -= toInterest;
+    s.interestPaid += toInterest;
+    s.debt -= pay - toInterest;
+    if (s.debt < 0.01 && s.accrued < 0.01) clearLoan(s);
+    else if (s.lateUntil && dueNow() < 0.01) s.lateUntil = 0;   // that covered the late payment
+    toast(s.debt ? `Paid ${money(pay)}. You still owe ${money(s.debt)}.` : `Paid off! You're debt-free.`);
+    dirty = true;
+    render(true);
+    return true;
+  }
+  function clearLoan(s) { s.debt = 0; s.accrued = 0; s.dueAt = 0; s.lateUntil = 0; }
+
+  // A payment is due: take it from cash, or send a late notice
+  function collect(now) {
+    const s = L(), due = roundUp(dueNow());
+    if (state.cash >= due) {
+      const extra = overLimit();
+      state.cash -= due;
+      s.interestPaid += s.accrued;
+      s.accrued = 0;
+      s.debt -= extra;
+      s.lateUntil = 0;
+      s.dueAt = now + LOAN_PAY_SECONDS * 1000;
+      if (s.debt < 0.01) clearLoan(s);
+      return true;
+    }
+    if (!s.lateUntil) {                    // first miss: fee and a grace period
+      s.accrued += due * LATE_FEE;
+      s.lateUntil = now + LOAN_GRACE_SECONDS * 1000;
+      s.lates++;
+      showModal("Payment missed", `You were ${money(due - state.cash)} short on your loan payment. The bank added a ${money(due * LATE_FEE)} late fee. ` +
+        `Have ${money(roundUp(dueNow()))} in cash within ${LOAN_GRACE_SECONDS} seconds (it's taken the moment you do), or the bank takes one of your businesses.`, "");
+    }
+    return false;
+  }
+
+  // Grace is over and you still can't pay: the bank takes collateral.
+  function foreclose(now) {
+    const s = L();
+    const owed = s.accrued + s.debt;          // a default makes the whole loan due at once
+    if (!state.biz.length) {                  // nothing to take: write it off, no more loans this run
+      const taken = Math.min(state.cash, owed);
+      state.cash -= taken;
+      s.interestPaid += Math.min(taken, s.accrued);
+      clearLoan(s);
+      s.frozen = true;
+      showModal("Bankrupt", `You had nothing left for the bank to take, so it wrote off your loan` +
+        (taken > 0 ? ` after taking your last ${money(taken)}` : "") + `. No bank will lend to you again until you retire.`, "");
+      return;
+    }
+    // Take the business that covers the debt with the least left over: the
+    // cheapest one whose fire-sale price is enough, else the most valuable.
+    const price = b => saleValue(b) * FIRE_SALE;
+    const enough = state.biz.filter(b => price(b) >= owed).sort((a, b) => price(a) - price(b));
+    const b = enough[0] || [...state.biz].sort((a, c) => price(c) - price(a))[0];
+    const proceeds = price(b);
+    state.biz = state.biz.filter(x => x !== b);
+    if (typeof sheetBizId !== "undefined" && sheetBizId === b.id) closeSheet();
+    s.seized++;
+    const toInterest = Math.min(proceeds, s.accrued);
+    s.accrued -= toInterest;
+    s.interestPaid += toInterest;
+    s.debt = Math.max(0, s.debt - (proceeds - toInterest));
+    const leftover = Math.max(0, proceeds - owed);
+    state.cash += leftover;                   // your equity comes back to you (not "earned")
+    s.lateUntil = 0;
+    if (s.debt < 0.01 && s.accrued < 0.01) clearLoan(s);
+    else s.dueAt = now + LOAN_PAY_SECONDS * 1000;
+    showModal("The bank took a business", `You couldn't make your loan payment, so the bank took ${b.name} and sold it for ${money(proceeds)}. ` +
+      (s.debt ? `You still owe ${money(s.debt)}.` : `That paid off the loan` + (leftover > 0 ? ` and you got the ${money(leftover)} left over.` : ".")),
+      leftover > 0 ? "+" + money(leftover) : "");
+    dirty = true;
+  }
+
+  // ---- Drawing the card ----
+  // Styles for this card only (style.css belongs to the core).
+  const css = document.createElement("style");
+  css.textContent = `
+    .loan-nums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 12px; }
+    .loan-nums div { display: grid; }
+    .loan-nums span { font-size: 13px; color: var(--muted); }
+    .loan-nums b { font: 600 20px var(--mono); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+    .loan-nums small { font: 12px var(--mono); color: var(--muted); }
+    @media (max-width: 760px) { .loan-nums b { font-size: 16px; } }
+    .loan-late { background: #f3d6d2; color: #8f2d25; border-radius: 8px; padding: 8px 10px; font-weight: 700; }
+    .loan-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+    .loan-btns .bigbtn { font-size: 18px; padding: 9px 14px; }`;
+  document.head.appendChild(css);
+
+  // (named drawCard, not render: render() is the game's own redraw)
+  function drawCard(card, full) {
+    if (full && !card.querySelector(".loan-nums")) {
+      card.innerHTML = `<h2 class="cond">Bank loans</h2>
+        <p>Borrow against your businesses to buy more, sooner. The bank lends up to half of what your businesses would sell for.
+        Interest is due every ${LOAN_PAY_SECONDS / 60} minutes and comes out of your cash by itself. <strong>Miss a payment and the bank takes a business.</strong></p>
+        <div class="loan-late" id="loanLate" hidden></div>
+        <div class="loan-nums">
+          <div><span>You owe</span><b id="loanDebt"></b></div>
+          <div><span>Bank will lend</span><b id="loanAvail"></b></div>
+          <div><span id="loanNextLbl">Next payment</span><b id="loanNext"></b><small id="loanWhen"></small></div>
+        </div>
+        <div class="loan-btns">
+          <button class="bigbtn go cond" id="loanBorrow"></button>
+          <button class="bigbtn cond" id="loanRepay"></button>
+        </div>
+        <p class="note" id="loanNote"></p>`;
+      card.querySelector("#loanBorrow").addEventListener("click", borrow);
+      card.querySelector("#loanRepay").addEventListener("click", repay);
+    }
+    if (!card.querySelector(".loan-nums")) return;
+    const s = L(), now = Date.now(), q = sel => card.querySelector(sel);
+    const step = borrowStep(), canBorrow = !s.frozen && !s.lateUntil && step >= MIN_BORROW;
+    q("#loanDebt").textContent = money(s.debt);
+    q("#loanAvail").textContent = s.frozen ? "Nothing" : money(available());
+    // Next payment: interest so far + what the rest of the period will add + any over-limit part
+    const left = Math.max(0, s.dueAt - now);
+    const projected = s.debt ? s.accrued + s.debt * ratePerSec() * left / 1000 + overLimit() : 0;
+    q("#loanNext").textContent = s.lateUntil ? money(dueNow()) : s.debt ? money(projected) : "None";
+    q("#loanWhen").textContent = s.lateUntil ? "overdue" : s.debt ? `due in ${duration(left)}` : "";
+    q("#loanNextLbl").textContent = s.lateUntil ? "Late payment" : "Next payment";
+    const late = q("#loanLate");
+    late.hidden = !s.lateUntil;
+    if (s.lateUntil) late.textContent = `Payment late! Have ${money(roundUp(dueNow()))} in cash within ${duration(Math.max(0, s.lateUntil - now) + 999)} or the bank takes a business.`;
+    const bb = q("#loanBorrow"), rb = q("#loanRepay");
+    bb.textContent = canBorrow ? `Borrow ${money(step)}` : "Borrow";
+    bb.setAttribute("aria-disabled", String(!canBorrow));
+    const owed = s.debt + s.accrued;
+    rb.textContent = !owed ? "Pay back" : state.cash >= owed ? `Pay it all off: ${money(owed)}` : `Pay back ${money(state.cash)}`;
+    rb.setAttribute("aria-disabled", String(!owed || state.cash <= 0));
+    q("#loanNote").textContent = s.frozen
+      ? "You went bankrupt this run. Banks will lend to you again after you retire."
+      : !state.biz.length ? "Banks lend against businesses. Buy one first."
+      : (s.debt ? `Interest right now: ${money(s.debt * ratePerSec() * LOAN_PAY_SECONDS)} every ${LOAN_PAY_SECONDS / 60} minutes. ` : "") +
+        (overLimit() > 0 ? `You owe ${money(overLimit())} more than your businesses support, so that's added to your next payment. ` : "") +
+        "Borrowing pays off when the money buys businesses that earn more than the interest.";
+  }
+
+  registerInvestment({
+    id: "loans", name: "Bank loans", order: 20, unlockTier: 1,
+    fresh: () => ({ debt: 0, accrued: 0, dueAt: 0, lateUntil: 0, frozen: false, borrowed: 0, interestPaid: 0, seized: 0, lates: 0 }),
+    // Never trust a save: every number must be a finite, non-negative number
+    validate(saved) {
+      const num = k => (Number.isFinite(saved[k]) && saved[k] >= 0 ? saved[k] : 0);
+      const out = { debt: num("debt"), accrued: num("accrued"), dueAt: num("dueAt"), lateUntil: num("lateUntil"), frozen: saved.frozen === true,
+        borrowed: num("borrowed"), interestPaid: num("interestPaid"), seized: Math.floor(num("seized")), lates: Math.floor(num("lates")) };
+      if (out.debt > 0 && !out.dueAt) out.dueAt = Date.now() + LOAN_PAY_SECONDS * 1000;   // owing but no due date: give one
+      if (!out.debt && !out.accrued) { out.dueAt = 0; out.lateUntil = 0; }
+      return out;
+    },
+    // Interest builds up over time (also for time away, already capped at 8 hours)
+    earn(seconds) {
+      const s = L();
+      if (s.debt > 0) s.accrued += s.debt * ratePerSec() * seconds;
+      return 0;                              // nothing is paid here: payments happen in tick()
+    },
+    tick(now) {
+      const s = L();
+      if (!s.debt && !s.accrued) return;
+      // While a modal is up (a missed-payment notice, "while you were out",
+      // a sale...) the bank waits, so two pop-ups never land on each other.
+      if (modalOpen()) return;
+      if (s.lateUntil) {
+        if (state.cash >= roundUp(dueNow())) { collect(now); toast("Late payment made. The bank is happy again."); }
+        else if (now >= s.lateUntil) foreclose(now);
+        return;
+      }
+      if (s.dueAt && now >= s.dueAt) collect(now);
+    },
+    netIncome: () => -L().debt * ratePerSec(),    // interest shows as a cost in the $/sec ticker
+    render: drawCard,
+    stats: () => {
+      const s = L();
+      if (!s.borrowed) return [];
+      return [["Bank loan owed", money(s.debt)], ["Interest paid", money(s.interestPaid)], ["Businesses lost to the bank", s.seized]];
+    },
+    // Handles for tests/invest_loans.py
+    test: { borrow, repay, collect, foreclose, creditLimit, available, collateral, ratePerSec, dueNow, overLimit, borrowStep,
+      LOAN_LTV, LOAN_PAY_SECONDS, LOAN_GRACE_SECONDS, LOAN_COST_SHARE, LATE_FEE, FIRE_SALE },
+  });
+})();
 /* =====================================================================
    INVESTMENT: PARTNERSHIPS AND PRIVATE EQUITY
    Team up with a private equity fund and other partners to buy a big
@@ -3202,26 +3615,251 @@ function updateInvest(full) {
             odds: g => GRADES[g].odds, outcomeMults: () => OUTCOMES.map(o => o.mult) },
   });
 })();
-
 /* =====================================================================
-   INVESTMENT: STOCK MARKET  (not built yet)
-   Planned: An index fund that grows slowly, plus a few made-up company stocks whose
-   prices swing.
+   INVESTMENT: STOCK MARKET
+   Owning a small slice of other people's companies instead of running
+   your own. It's passive (no fixing, no hustling), so on average it
+   earns LESS than a business you run, but it's there for spare cash.
 
-   To build it, replace this comment's "not built yet" and call
-   registerInvestment() (see 20-invest.js for every hook), for example:
+   How it plays (one card, one decision per row: buy or sell):
+   - An INDEX FUND that holds a bit of everything: slow, steady, low risk.
+   - Four made-up company stocks whose prices swing a lot more. On
+     average they do a little better than the index, but any one of them
+     can fall hard. Each one partly follows the whole market and partly
+     does its own thing.
+   - Now and then the market CRASHES: everything falls at once. After a
+     crash an event offers to "buy the dip" (the index usually recovers,
+     which is the classic lesson).
+   - Buy puts a quarter of your cash into that row. Sell sells all of it.
+     Only the PROFIT from a sale counts as "earned" (towards tiers and
+     Legacy), the same rule as selling a business (addProceeds).
 
-     registerInvestment({
-       id: "stocks", name: "Stock market", order: 30, unlockTier: 2,
-       fresh: () => ({ }),
-       validate: saved => ({ }),
-       earn(seconds) { return 0; },
-       render(card, full) { },
-     });
+   Pace: prices move in "payback periods": TIER_PAYBACK for your current
+   tier (tier 2 or higher), the time a plain business takes to pay for
+   itself. Business = +100% per period; index fund about +25%; stocks
+   +30% to +45%. So the market stays a side dish at every stage of the
+   game, and prices move fast early on and slower later, like everything else.
 
-   Keep everything for this investment in this file. Its tests go in
-   tests/invest_stocks.py and run on the built index.html.
+   Prices move every frame in earn() and also cover time away (already
+   capped at 8 hours), split into small steps so the chart still looks
+   like a chart.
    ===================================================================== */
+(() => {   // own scope: every file shares one <script>
+  // ---- The things you can buy ----
+  // mu: average growth per payback period. sigma: how wild the swings are
+  // (standard deviation per period). beta: how much it follows the whole
+  // market (1 = moves with it, 0 = ignores it). start: first share price.
+  // All names are made up.
+  const ASSETS = [
+    { id: "index",  name: "Whole Market Index Fund", kind: "Index fund: a bit of every company", mu: 0.25, sigma: 0.12, beta: 1,   start: 100 },
+    { id: "arcus",  name: "Arcus Robotics",          kind: "Factory robots",                     mu: 0.40, sigma: 0.45, beta: 1.2, start: 42 },
+    { id: "bright", name: "Brightvale Foods",        kind: "Groceries and snacks",               mu: 0.30, sigma: 0.25, beta: 0.6, start: 65 },
+    { id: "cobalt", name: "Cobalt Ridge Energy",     kind: "Oil, gas and wind farms",            mu: 0.35, sigma: 0.40, beta: 1.0, start: 28 },
+    { id: "quill",  name: "Quillfeather Games",      kind: "Video games: hit or miss",           mu: 0.45, sigma: 0.65, beta: 1.1, start: 12 },
+  ];
+  const AS = Object.fromEntries(ASSETS.map(a => [a.id, a]));
+  const MARKET_SIGMA = 0.12;          // swings of the market as a whole, per period
+  const BUY_SHARE = 0.25;             // Buy puts this share of your cash in
+  const MIN_BUY = 10;
+  const HIST_SECONDS = 5;             // one chart point every 5 seconds
+  const HIST_POINTS = 48;             // so the chart shows the last 4 minutes
+  const CRASH_RATE = 0.25;            // crashes per payback period, on average
+  const CRASH_DROP = [0.15, 0.25];    // a crash takes this much off the market (stocks: times beta)
+  const DIP_WINDOW = 120e3;           // the "buy the dip" event can come up for 2 minutes after a crash
+
+  // One payback period in seconds, at your tier (tier 2 at least: that's when the card opens)
+  const period = () => TIER_PAYBACK[Math.max(2, tierUnlocked())];
+  const M = () => inv("stocks");
+  const value = id => M().hold[id].shares * M().price[id];
+  const portfolio = () => ASSETS.reduce((sum, a) => sum + value(a.id), 0);
+  const buyAmount = () => state.cash * BUY_SHARE;
+  // A standard normal random number (Box-Muller): most are near 0, a few far out
+  function gauss() {
+    let u = 0;
+    while (u === 0) u = Math.random();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * Math.random());
+  }
+
+  // Move every price forward by dt periods. Each stock's move is part
+  // market move (shared by all), part its own. The -sigma^2/2 term keeps
+  // the AVERAGE growth equal to mu (a property of compounding swings), and
+  // the crash term adds back what crashes take away on average.
+  function step(dt) {
+    const s = M();
+    const zMarket = gauss();
+    const crashLoss = CRASH_RATE * (CRASH_DROP[0] + CRASH_DROP[1]) / 2;
+    for (const a of ASSETS) {
+      const shared = Math.min(1, a.beta * MARKET_SIGMA / a.sigma);         // share of its swing that's the market's
+      const z = shared * zMarket + Math.sqrt(1 - shared * shared) * gauss();
+      const drift = a.mu + crashLoss * a.beta;
+      s.price[a.id] = Math.max(0.01, s.price[a.id] * Math.exp((drift - a.sigma * a.sigma / 2) * dt + a.sigma * Math.sqrt(dt) * z));
+    }
+    // A crash in this step? (chance from the crash rate over dt periods)
+    if (Math.random() < 1 - Math.exp(-CRASH_RATE * dt)) crash();
+  }
+  function crash(size = CRASH_DROP[0] + Math.random() * (CRASH_DROP[1] - CRASH_DROP[0])) {
+    const s = M();
+    for (const a of ASSETS) s.price[a.id] = Math.max(0.01, s.price[a.id] * (1 - Math.min(0.9, size * a.beta)));
+    s.crashAt = Date.now();
+    s.crashes++;
+    if (investUnlocked(MOD)) toast(`Market crash! The index fund fell ${Math.round(size * 100)}%.`);
+  }
+
+  // ---- Actions ----
+  function buy(id) {
+    const s = M(), amount = buyAmount();
+    if (!AS[id]) return false;
+    if (amount < MIN_BUY) { toast(`You need at least ${money(MIN_BUY / BUY_SHARE)} in cash to buy`); return false; }
+    state.cash -= amount;
+    s.hold[id].shares += amount / s.price[id];
+    s.hold[id].basis += amount;            // what you've paid in, for working out profit
+    toast(`Bought ${money(amount)} of ${AS[id].name}`);
+    dirty = true;
+    render(true);
+    return true;
+  }
+  function sell(id) {
+    const s = M(), h = s.hold[id];
+    if (!h || !h.shares) return false;
+    const got = value(id);
+    const profit = addProceeds(got, h.basis);   // only the profit counts as earned
+    s.realized += profit;
+    h.shares = 0; h.basis = 0;
+    toast(`Sold ${AS[id].name} for ${money(got)}: ` + (profit >= 0 ? `${money(profit)} profit` : `${money(-profit)} loss`));
+    dirty = true;
+    render(true);
+    return true;
+  }
+
+  // ---- Drawing the card ----
+  const css = document.createElement("style");
+  css.textContent = `
+    .stk-head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font: 14px var(--mono); }
+    .stk-row { display: grid; grid-template-columns: 1fr 96px auto; gap: 2px 10px; align-items: center; border-top: 1px solid var(--rule); padding-top: 8px; }
+    .stk-row h3 { margin: 0; font-size: 19px; line-height: 1.05; }
+    .stk-row .sub { font-size: 12px; color: var(--muted); }
+    .stk-row .num { font: 13px var(--mono); grid-column: 1 / 3; }
+    .stk-row svg { grid-row: 1 / span 2; grid-column: 2; width: 96px; height: 34px; }
+    .stk-row .btns { grid-row: 1 / span 3; grid-column: 3; display: grid; gap: 5px; }
+    .stk-row .btns .smallbtn { padding: 4px 8px; font-size: 14px; min-width: 104px; }
+    .stk-up { color: var(--money); } .stk-down { color: var(--loss); }`;
+  document.head.appendChild(css);
+
+  // A tiny line chart of the recent price history, as an SVG path
+  function sparkPath(hist) {
+    if (hist.length < 2) return "";
+    const lo = Math.min(...hist), hi = Math.max(...hist), span = hi - lo || 1;
+    return hist.map((p, i) => `${i ? "L" : "M"}${(i / (hist.length - 1) * 94 + 1).toFixed(1)},${(32 - (p - lo) / span * 30).toFixed(1)}`).join("");
+  }
+  const pct = (a, b) => (b > 0 ? (a / b - 1) * 100 : 0);
+  const signed = n => (n >= 0 ? "+" : "") + n.toFixed(1) + "%";
+
+  function drawCard(card, full) {
+    const s = M();
+    if (full && !card.querySelector(".stk-row")) {
+      card.innerHTML = `<h2 class="cond">Stock market</h2>
+        <p>Own a slice of other companies. The index fund is slow and steady; single stocks swing hard either way.
+        On average it all earns less than running a business, but it puts spare cash to work. Buy puts in a quarter of your cash. Sell sells all of that one.</p>
+        <div class="stk-head"><span id="stkTotal"></span><span id="stkGain"></span></div>` +
+        ASSETS.map(a => `<div class="stk-row" data-id="${a.id}">
+          <div><h3 class="cond">${esc(a.name)}</h3><div class="sub">${esc(a.kind)}</div></div>
+          <svg viewBox="0 0 96 34" aria-hidden="true"><path fill="none" stroke-width="2" stroke-linejoin="round"/></svg>
+          <div class="btns"><button class="smallbtn" id="stk-buy-${a.id}">Buy</button><button class="smallbtn" id="stk-sell-${a.id}">Sell</button></div>
+          <div class="num"></div></div>`).join("") +
+        `<p class="note" id="stkNote"></p>`;
+      for (const a of ASSETS) {
+        card.querySelector(`#stk-buy-${a.id}`).addEventListener("click", () => buy(a.id));
+        card.querySelector(`#stk-sell-${a.id}`).addEventListener("click", () => sell(a.id));
+      }
+    }
+    if (!card.querySelector(".stk-row") || !full) return;    // numbers change slowly: redraw 4x a second, not every frame
+    const total = portfolio(), basis = ASSETS.reduce((sum, a) => sum + s.hold[a.id].basis, 0);
+    card.querySelector("#stkTotal").textContent = `Your stocks: ${money(total)}`;
+    const g = card.querySelector("#stkGain");
+    g.textContent = basis ? `${total >= basis ? "Up" : "Down"} ${money(Math.abs(total - basis))} (${signed(pct(total, basis))})` : "";
+    g.className = total >= basis ? "stk-up" : "stk-down";
+    const amt = buyAmount();
+    for (const row of card.querySelectorAll(".stk-row")) {
+      const id = row.dataset.id, h = s.hold[id], hist = s.hist[id];
+      const chartUp = s.price[id] >= (hist[0] ?? s.price[id]);
+      const path = row.querySelector("path");
+      path.setAttribute("d", sparkPath([...hist, s.price[id]]));
+      path.setAttribute("stroke", chartUp ? "var(--money)" : "var(--loss)");
+      const move = pct(s.price[id], hist[0] ?? s.price[id]);
+      row.querySelector(".num").innerHTML = `${money(s.price[id])}/share <span class="${move >= 0 ? "stk-up" : "stk-down"}">${signed(move)}</span> lately` +
+        (h.shares ? ` · you own ${money(value(id))} <span class="${value(id) >= h.basis ? "stk-up" : "stk-down"}">(${signed(pct(value(id), h.basis))})</span>` : "");
+      const bb = row.querySelector(`#stk-buy-${id}`), sb = row.querySelector(`#stk-sell-${id}`);
+      bb.textContent = amt >= MIN_BUY ? `Buy ${money(amt)}` : "Buy";
+      bb.setAttribute("aria-disabled", String(amt < MIN_BUY));
+      sb.textContent = h.shares ? `Sell ${money(value(id))}` : "Sell";
+      sb.setAttribute("aria-disabled", String(!h.shares));
+    }
+    card.querySelector("#stkNote").textContent = s.realized
+      ? `Profit from selling so far: ${money(s.realized)}. Crashes so far: ${s.crashes}.`
+      : "Prices move whether you're watching or not, even while you're away.";
+  }
+
+  // A fresh market: starting prices, nothing owned, a flat chart
+  const fresh = () => ({
+    price: Object.fromEntries(ASSETS.map(a => [a.id, a.start])),
+    hold: Object.fromEntries(ASSETS.map(a => [a.id, { shares: 0, basis: 0 }])),
+    hist: Object.fromEntries(ASSETS.map(a => [a.id, []])),
+    histClock: 0,                         // seconds since the last chart point
+    crashAt: 0, crashes: 0, realized: 0,
+  });
+
+  const MOD = {
+    id: "stocks", name: "Stock market", order: 30, unlockTier: 2,
+    fresh,
+    validate(saved) {
+      const out = fresh();
+      const pos = v => Number.isFinite(v) && v >= 0;
+      for (const a of ASSETS) {
+        const p = saved.price && saved.price[a.id];
+        if (Number.isFinite(p) && p > 0) out.price[a.id] = Math.max(0.01, p);
+        const h = saved.hold && saved.hold[a.id];
+        if (h && pos(h.shares) && pos(h.basis)) out.hold[a.id] = { shares: h.shares, basis: h.basis };
+        const hist = saved.hist && saved.hist[a.id];
+        if (Array.isArray(hist)) out.hist[a.id] = hist.filter(v => Number.isFinite(v) && v > 0).slice(-HIST_POINTS);
+      }
+      for (const k of ["histClock", "crashAt", "crashes"]) if (pos(saved[k])) out[k] = saved[k];
+      if (Number.isFinite(saved.realized)) out.realized = saved.realized;   // can be negative (losses)
+      return out;
+    },
+    // Prices drift every frame, and for time away (in steps of at least
+    // HIST_SECONDS, at most 200 of them, so 8 hours away is quick to work out).
+    earn(seconds) {
+      const s = M();
+      const steps = Math.min(200, Math.max(1, Math.round(seconds / HIST_SECONDS)));
+      const dt = seconds / steps;
+      for (let i = 0; i < steps; i++) {
+        step(dt / period());
+        s.histClock += dt;
+        if (s.histClock >= HIST_SECONDS) {      // time for a new chart point
+          s.histClock = 0;
+          for (const a of ASSETS) { const h = s.hist[a.id]; h.push(s.price[a.id]); if (h.length > HIST_POINTS) h.shift(); }
+        }
+      }
+      return 0;                                  // price moves aren't cash until you sell
+    },
+    render: drawCard,
+    // After a crash, a chance to buy the dip
+    events: () => (Date.now() - M().crashAt < DIP_WINDOW && buyAmount() >= MIN_BUY ? [() => ({
+      title: "Buy the dip?",
+      text: `The market just crashed and the index fund is on sale. People who bought after crashes have usually done well, but nobody knows where the bottom is.`,
+      options: [
+        { label: `Buy ${money(buyAmount())} of the index`, yes: true, act: () => buy("index") },
+        { label: "Stay out", act: () => {} },
+      ] })] : []),
+    stats: () => {
+      const s = M();
+      const owned = portfolio();
+      return owned || s.realized ? [["Stocks owned", money(owned)], ["Profit from stocks", money(s.realized)], ["Market crashes seen", s.crashes]] : [];
+    },
+    test: { ASSETS, buy, sell, step, crash, period, portfolio, value, buyAmount, BUY_SHARE, CRASH_RATE, HIST_POINTS },
+  };
+  registerInvestment(MOD);
+})();
 /* =====================================================================
    10. START UP
    ===================================================================== */
