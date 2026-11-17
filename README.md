@@ -43,6 +43,10 @@ These were real bugs or problems found by the tests or the screenshot review bef
   - Amounts just under a million showed as "$1000K".
   - A buyout offer still paid out for a business you had already sold.
   - The first sale prices let you buy a plain business and sell it straight back at a profit. Sales now go by the business's market price, not its income.
+  - Investing: the first bond rates had a corporate bond beating the index fund, so a safe bond paid better than stocks. Rates were cut so the order is the real one: bonds, then the index fund, then single stocks, then running a business.
+  - Loans: the "next payment" amount wrapped onto three lines on a phone. The due time now has its own small line.
+  - Two shared tests assumed no investments existed: one counted exactly 6 event types, and one expected the Invest tab to be hidden. Both now allow for real investments.
+  - A click-through check failed about 1 run in 4: the first test purchase could hide a problem, and its "Surprise!" notice covered the tabs the next step clicked.
   - Commodities and crypto (caught in the design review before testing): a plain random walk makes the average price creep up by itself, which would have made crypto free money. Each coin's drift now cancels that. Pop-up news only happens if you answer, so a news event about a coin you already held could have been dodged by ignoring it. Those events are now only offered for coins you don't hold.
   - On a phone, a price's "▲ 2.0%" split across two lines, and a brand-new game showed empty charts. Each market now starts with 20 minutes of history.
 
