@@ -106,6 +106,8 @@ with sync_playwright() as p:
     # --- layout on the Deck ---
     page.evaluate("() => { delete window.dayPhase; }")
     ok(S("document.documentElement.scrollWidth <= innerWidth && document.documentElement.scrollHeight <= innerHeight"), "Deck: the page itself never scrolls")
+    tops = S("[...document.querySelectorAll('.tab')].filter(t => !t.hidden).map(t => Math.round(t.getBoundingClientRect().top))")
+    ok(len(tops) >= 5 and len(set(tops)) == 1, f"Deck: all {len(tops)} tabs (Invest included) fit in one row")
     hb = page.locator("#hustle").bounding_box()
     ok(hb["y"] + hb["height"] <= 800, "Deck: the Hustle button is fully on screen")
     page.evaluate("() => { window.dayPhase = () => 0.5; }"); page.wait_for_timeout(300)

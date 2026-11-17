@@ -96,7 +96,7 @@ After editing anything in `src/`, run `python3 build.py`, then commit both `src/
 - `tests/play.py` runs 44 click-through checks and takes screenshots. It also generates 3000 listings to check every name and number.
 - `tests/business.py` runs 51 checks on hidden problems, due diligence, all four mini games, repairs and selling, on a Steam Deck sized screen and a phone.
 - `tests/scouting.py` runs 22 checks on Deal sense: XP, every level's perk, and keeping it through retiring and saving.
-- `tests/look.py` runs 36 checks on the day/night sky, the Look and feel settings, the effects (confetti, coins, cash count-up), calm mode, drawing speed, and the Steam Deck and phone layouts.
+- `tests/look.py` runs 37 checks on the day/night sky, the Look and feel settings, the effects (confetti, coins, cash count-up), calm mode, drawing speed, and the Steam Deck and phone layouts.
 - `tests/invest_host.py` runs 16 checks on the investment plug-in point, using a test investment, including that a broken one can't crash the game.
 - `tests/invest_loans.py` runs 47 checks on loans: the credit limit, interest, on-time and missed payments, the bank taking a business, bankruptcy, paying back, time away and saving.
 - `tests/invest_stocks.py` runs 33 checks on stocks: buying and selling, only profit counting as earned, growth and swings over 600 simulated periods, crashes and buying the dip, time away and saving.
