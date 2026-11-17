@@ -47,6 +47,7 @@ These were real bugs or problems found by the tests or the screenshot review bef
   - Loans: the "next payment" amount wrapped onto three lines on a phone. The due time now has its own small line.
   - Two shared tests assumed no investments existed: one counted exactly 6 event types, and one expected the Invest tab to be hidden. Both now allow for real investments.
   - A click-through check failed about 1 run in 4: the first test purchase could hide a problem, and its "Surprise!" notice covered the tabs the next step clicked.
+  - Startups, franchising and partnerships: the first odds for startups paid about 1.9x for anyone who did due diligence, which was too generous; they were tuned to about 1.7x. An investment card stayed blank when another investment unlocked, because the game rebuilds every card and the card thought nothing had changed. Pressing an old "capital call" a second time took your money twice. A big win's pop-up would have been hidden behind "While you were out", so it now waits a moment.
 
 ## What hasn't been tested
 
