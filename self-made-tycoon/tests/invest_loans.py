@@ -99,10 +99,11 @@ with sync_playwright() as p:
     n0 = S("T.state.biz.length")
     page.evaluate("() => { const s = T.inv('loans'); s.accrued = 100; T.state.cash = 0; s.dueAt = Date.now() - 1; T.investTick(Date.now()); }")
     close_modal()
-    page.evaluate("() => { T.inv('loans').lateUntil = Date.now() - 1; T.state.cash = 0; }")
-    # which business the bank should pick: cheapest one whose fire-sale price covers the debt, else the biggest
-    owed = S("T.inv('loans').debt + T.inv('loans').accrued")
-    prices = S("T.state.biz.map(b => ({ id: b.id, v: T.saleValue(b) * 0.75 }))")
+    # which business the bank should pick: cheapest one whose fire-sale price covers the debt, else the biggest.
+    # Read in the same evaluate that ends the grace period: once it's over, the game's next frame
+    # can take the business before a separate read gets to see it.
+    owed, prices = S("""(() => { T.inv('loans').lateUntil = Date.now() - 1; T.state.cash = 0;
+        return [T.inv('loans').debt + T.inv('loans').accrued, T.state.biz.map(b => ({ id: b.id, v: T.saleValue(b) * 0.75 }))]; })()""")
     enough = sorted([x for x in prices if x["v"] >= owed], key=lambda x: x["v"])
     expect = (enough[0] if enough else max(prices, key=lambda x: x["v"]))
     page.evaluate("() => T.investTick(Date.now())")
