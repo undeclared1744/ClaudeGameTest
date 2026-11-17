@@ -47,6 +47,11 @@ These were real bugs or problems found by the tests or the screenshot review bef
   - Loans: the "next payment" amount wrapped onto three lines on a phone. The due time now has its own small line.
   - Two shared tests assumed no investments existed: one counted exactly 6 event types, and one expected the Invest tab to be hidden. Both now allow for real investments.
   - A click-through check failed about 1 run in 4: the first test purchase could hide a problem, and its "Surprise!" notice covered the tabs the next step clicked.
+  - Motion and theme pass: the smooth cash count-up first took about two seconds to roll down after a big purchase ($1B to $1K), so it now counts on a log scale and lands in about a second at any size.
+  - Loading a different save (retiring, wiping, a save code, or account sync) would have set off confetti and coin showers for every "new" business, and raised the whole skyline from the ground. The effects now notice a swapped save and stay quiet.
+  - Buying a business rebuilds the deals list, so the button you tapped is gone before the effect can find it. Tap positions are now noted before the button reacts.
+  - After loans, stocks and bonds arrived, the Invest tab made six tabs, and on the Steam Deck the Stats tab wrapped onto a second row. Tabs now stay in one row (and scroll sideways if they ever run out of room).
+  - At dusk on the Steam Deck, the decorative far-off city behind your buildings was tall and bright enough to compete with your own skyline. It was made lower and fainter.
 
 ## What hasn't been tested
 

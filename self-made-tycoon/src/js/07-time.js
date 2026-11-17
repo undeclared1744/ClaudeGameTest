@@ -58,6 +58,7 @@ function frame(nowPerf) {
   render(false);
   if (nowPerf - lastSlowRender > 250) { lastSlowRender = nowPerf; render(true); }
   drawSkyline(dt);
+  fxFrame(dt);                       // coin pops, confetti, cash flashes (13-fx.js)
   pollGamepads();
   requestAnimationFrame(frame);
 }

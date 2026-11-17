@@ -3,143 +3,311 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0e1524">
 <title>Self-Made Tycoon</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<!-- Fonts: Bricolage Grotesque (headings + body; its width axis gives the
+     condensed headings) and JetBrains Mono (every number). If they can't
+     load (offline), the CSS falls back to the device's own fonts. -->
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 /* =====================================================================
    LOOK AND FEEL
-   Left side: a night-time "terminal" with amber ticker numbers and the
-   skyline of everything you own. Right side: ledger paper with faint
-   green rules, where the deals and your books live.
-   Layout: two columns on wide screens; one column on phones with the
-   terminal pinned to the top.
+   Two halves:
+   - Left, the "terminal": your cash ticker, the skyline of everything
+     you own, and the Hustle button. Its background follows the sky, so
+     it shifts from deep night blue to a brighter dusk/day blue as the
+     day/night cycle runs (11-skyline.js sets --term-top).
+   - Right, the "ledger": cream ledger paper with faint ruled lines, where
+     the deals, your businesses and your books live, laid out as cards.
+   Layout: two columns on wide screens (Steam Deck 1280x800, laptops);
+   one column on phones with a compact terminal pinned to the top.
+
+   Everything is drawn with CSS and canvas: no images, so the game stays
+   one small file. The only outside download is the two web fonts, and
+   the font stacks fall back to the device's own fonts if they can't load.
+
+   HOW TO READ THIS FILE
+     1. Design tokens (colors, fonts, sizes)    - change the look here
+     2. Base elements
+     3. Terminal (left)
+     4. Ledger (right): tabs and panes
+     5. Cards: business rows, buttons, chips
+     6. THEME KIT: reusable pieces for investment cards
+     7. Pop-ups: modal, business sheet, mini games, toast
+     8. Motion: keyframes, effects layer, calm mode
+     9. Phones
    ===================================================================== */
+
+/* ---------- 1. Design tokens ---------- */
 :root {
-  --night:  #121a2b;   /* terminal / sky */
-  --night-2:#1c2740;   /* raised terminal surfaces */
-  --amber:  #f2b84b;   /* ticker numbers and the Hustle button: the one bold color */
-  --paper:  #eef1e6;   /* ledger paper */
-  --rule:   #d6dfcb;   /* ledger lines and row fills */
-  --ink:    #1b2433;   /* normal text */
-  --muted:  #5d6672;   /* secondary text */
-  --money:  #2e8b57;   /* good / affordable */
-  --loss:   #c0443a;   /* bad / danger */
-  --display: "Archivo", "Arial Narrow", sans-serif;
-  --body: "Archivo", "Helvetica Neue", Arial, sans-serif;
-  --mono: "IBM Plex Mono", "Courier New", monospace;
+  /* night side (terminal) */
+  --night:   #0e1524;   /* terminal base and night sky */
+  --night-2: #172036;   /* raised surfaces on the terminal */
+  --night-3: #24304d;   /* borders and tracks on the terminal */
+  --term-top:#14203a;   /* top of the terminal gradient: follows the sky (set from JS) */
+  --term-text:#dfe6f2;
+  --term-muted:#8c98b0;
+  /* the one bold color: gold. Cash, the Hustle button, coins. */
+  --gold:      #f4b740;
+  --gold-deep: #a8730f;  /* the Hustle button's pressed-down edge */
+  --gold-soft: #fff2d3;
+  --amber:     var(--gold);   /* old name for --gold, kept so older code still works */
+  /* ledger side */
+  --paper:   #f5f1e6;   /* ledger paper */
+  --paper-2: #e9e2d0;   /* the tab strip */
+  --surface: #fffcf5;   /* cards sit on the paper */
+  --rule:    #e2dac6;   /* card borders, ruled lines, empty bars */
+  --ink:     #18202e;   /* normal text */
+  --muted:   #646b76;   /* secondary text (4.9:1 on --surface) */
+  /* meaning */
+  --money:      #1d8656;  /* good, affordable, profit */
+  --money-soft: #d8efe1;
+  --money-ink:  #145c3b;
+  --loss:       #c0433a;  /* bad, danger, loss */
+  --loss-soft:  #f6dcd8;
+  --loss-ink:   #8c2b24;
+  --off:        #cfd3c6;  /* a button you can't afford yet */
+  --off-ink:    #6b7166;
+  /* type */
+  --display: "Bricolage Grotesque", "Arial Narrow", system-ui, sans-serif;
+  --body:    "Bricolage Grotesque", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono:    "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  /* shape */
+  --r-card: 14px;
+  --r-btn:  10px;
+  --shadow-1: 0 1px 0 rgba(24, 32, 46, .05), 0 6px 16px -10px rgba(24, 32, 46, .35);
+  --shadow-2: 0 2px 0 rgba(24, 32, 46, .05), 0 14px 28px -14px rgba(24, 32, 46, .45);
   color-scheme: light;
 }
+
+/* ---------- 2. Base elements ---------- */
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
-body { background: var(--paper); color: var(--ink); font: 16px/1.4 var(--body); -webkit-tap-highlight-color: transparent; overflow: hidden; }
+body {
+  background: var(--paper); color: var(--ink); font: 16px/1.4 var(--body);
+  font-optical-sizing: auto; -webkit-tap-highlight-color: transparent; overflow: hidden;
+}
 button { font: inherit; color: inherit; }
-:focus-visible { outline: 3px solid var(--amber); outline-offset: 2px; }
+:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
 [hidden] { display: none !important; }   /* hidden must win over display rules */
-.cond { font-family: var(--display); font-stretch: 68%; font-weight: 800; text-transform: uppercase; letter-spacing: .02em; }
+/* .cond: the condensed, uppercase heading style used for titles and big buttons */
+.cond { font-family: var(--display); font-stretch: 75%; font-weight: 800; text-transform: uppercase; letter-spacing: .01em; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }   /* any number that ticks */
 
 .app { display: grid; grid-template-columns: minmax(360px, 42%) 1fr; height: 100%; }
 
-/* ---------- LEFT: the terminal ---------- */
-.terminal { background: var(--night); color: #dfe6f2; display: flex; flex-direction: column; gap: 12px; padding: 16px; position: relative; overflow: hidden; }
+/* ---------- 3. LEFT: the terminal ---------- */
+.terminal {
+  background: linear-gradient(180deg, var(--term-top) 0%, var(--night) 62%);
+  color: var(--term-text); display: flex; flex-direction: column; gap: 12px; padding: 16px;
+  position: relative; overflow: hidden;
+}
 .brand { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .brand h1 { margin: 0; font-size: 34px; line-height: 1; color: #fff; }
-.brand .save-state { font: 12px var(--mono); color: #8794ad; text-align: right; }
-.rank { font: 600 14px var(--mono); color: var(--amber); letter-spacing: .04em; }
-.ticker { background: var(--night-2); border-radius: 8px; padding: 10px 14px; font-family: var(--mono); display: grid; gap: 2px; }
-.ticker .cash { font-size: 40px; line-height: 1.05; color: var(--amber); font-variant-numeric: tabular-nums; }
-.ticker .rates { display: flex; gap: 16px; flex-wrap: wrap; font-size: 14px; color: #aab5c8; }
+.brand .save-state { font: 12px var(--mono); color: var(--term-muted); text-align: right; }
+.rank { font: 600 13px var(--mono); color: var(--gold); letter-spacing: .06em; margin-top: 4px; }
+/* the ticker: frosted panel with the big cash number */
+.ticker {
+  background: rgba(255, 255, 255, .05); border: 1px solid rgba(255, 255, 255, .08); border-radius: 12px;
+  padding: 10px 14px; font-family: var(--mono); display: grid; gap: 2px;
+}
+.ticker .cash {
+  font-size: 40px; font-weight: 700; line-height: 1.05; color: var(--gold); font-variant-numeric: tabular-nums;
+  transition: color .35s, text-shadow .35s;
+}
+/* 13-fx.js adds these for a moment when cash jumps up or is spent */
+.ticker .cash.gain  { color: #9af0bd; text-shadow: 0 0 18px rgba(120, 230, 160, .55); transition: none; }
+.ticker .cash.spend { color: #ffb4a6; transition: none; }
+.ticker .rates { display: flex; gap: 6px 16px; flex-wrap: wrap; font-size: 14px; color: #aab5c8; }
 .ticker .boom { color: #7fe0a3; }
-.sky { position: relative; flex: 1 1 auto; min-height: 140px; border-radius: 8px; overflow: hidden; }
+.sky { position: relative; flex: 1 1 auto; min-height: 140px; border-radius: 12px; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .06); }
 #skyline { width: 100%; height: 100%; display: block; }
+/* a choice event slides up over the skyline */
 .event {
   position: absolute; left: 12px; right: 12px; bottom: 12px; z-index: 3;
-  background: #fff8e8; color: var(--ink); border-radius: 10px; padding: 12px 14px; display: grid; gap: 8px;
-  border-left: 8px solid var(--amber); box-shadow: 0 12px 30px rgba(0,0,0,.45);
+  background: #fff8e8; color: var(--ink); border-radius: 12px; padding: 12px 14px; display: grid; gap: 8px;
+  border-left: 8px solid var(--gold); box-shadow: 0 12px 30px rgba(0, 0, 0, .45);
+  animation: slide-up .32s cubic-bezier(.2, .9, .3, 1.2);
 }
 .event h2 { margin: 0; font-size: 24px; line-height: 1; }
 .event p { margin: 0; font-size: 15px; }
 .event .opts { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-.event .opts button { appearance: none; border: 0; border-radius: 8px; padding: 8px 12px; cursor: pointer; background: var(--night); color: #fff; font-weight: 700; }
+.event .opts button { appearance: none; border: 0; border-radius: var(--r-btn); padding: 8px 12px; cursor: pointer; background: var(--night); color: #fff; font-weight: 700; }
 .event .opts button.yes { background: var(--money); }
 .event .left { margin-left: auto; font: 12px var(--mono); color: var(--muted); }
-.job { font-family: var(--mono); font-size: 14px; display: grid; gap: 5px; color: #c9d2e3; }
-.job .bar { height: 7px; background: var(--night-2); border-radius: 4px; overflow: hidden; }
-.job .bar i { display: block; height: 100%; width: 0; background: var(--amber); transition: width .08s; }
+.job { font-family: var(--mono); font-size: 13px; display: grid; gap: 5px; color: #c9d2e3; }
+.job .bar { height: 7px; background: var(--night-3); border-radius: 4px; overflow: hidden; }
+.job .bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--gold), #ffd987); border-radius: 4px; transition: width .12s ease-out; }
+/* the Hustle button: a chunky gold key that presses down */
 .hustle {
-  appearance: none; border: 0; cursor: pointer; border-radius: 14px; background: var(--amber); color: var(--night);
-  padding: 16px 12px; font-size: 32px; line-height: 1; box-shadow: 0 6px 0 #a87a22, 0 10px 20px rgba(0,0,0,.35);
-  touch-action: manipulation; user-select: none;
+  appearance: none; border: 0; cursor: pointer; border-radius: 16px; color: var(--night);
+  background: linear-gradient(180deg, #ffd36e 0%, var(--gold) 55%, #e9a52a 100%);
+  padding: 16px 12px; font-size: 32px; line-height: 1;
+  box-shadow: 0 6px 0 var(--gold-deep), 0 12px 22px rgba(0, 0, 0, .4), inset 0 1px 0 rgba(255, 255, 255, .6);
+  touch-action: manipulation; user-select: none; -webkit-user-select: none;
+  transition: transform .06s, box-shadow .06s;
 }
 .hustle small { display: block; font: 600 14px var(--body); text-transform: none; letter-spacing: 0; margin-top: 6px; font-stretch: 100%; }
-.hustle:active, .hustle.pressed { transform: translateY(5px); box-shadow: 0 1px 0 #a87a22, 0 4px 10px rgba(0,0,0,.35); }
-.padhints { display: none; font: 12px var(--mono); color: #8794ad; text-align: center; }
+.hustle:active, .hustle.pressed { transform: translateY(5px); box-shadow: 0 1px 0 var(--gold-deep), 0 4px 10px rgba(0, 0, 0, .35), inset 0 1px 0 rgba(255, 255, 255, .6); }
+.padhints { display: none; font: 12px var(--mono); color: var(--term-muted); text-align: center; }
 .padhints.on { display: block; }
+/* "+$12" text that pops out of the Hustle button */
 .floats { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 4; }
-.float { position: absolute; font: 600 20px var(--mono); color: var(--amber); animation: rise 1s ease-out forwards; text-shadow: 0 2px 4px rgba(0,0,0,.6); white-space: nowrap; }
-@keyframes rise { to { transform: translateY(-70px); opacity: 0; } }
+.float {
+  position: absolute; font: 700 20px var(--mono); color: var(--gold); white-space: nowrap;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, .35), 0 0 12px rgba(244, 183, 64, .45);
+  animation: pop-rise 1s cubic-bezier(.2, .8, .3, 1) forwards;
+}
 
-/* ---------- RIGHT: the ledger ---------- */
-.ledger { display: flex; flex-direction: column; min-height: 0;
-  background: var(--paper) repeating-linear-gradient(to bottom, transparent 0 31px, rgba(46,139,87,.09) 31px 32px); }
-.tabs { display: flex; gap: 2px; padding: 12px 16px 0; background: var(--rule); flex-wrap: wrap; align-items: flex-end; }
-.tab { appearance: none; border: 0; cursor: pointer; padding: 9px 14px; border-radius: 8px 8px 0 0; background: transparent; color: var(--muted); font-size: 20px; }
-.tab[aria-selected="true"] { background: var(--paper); color: var(--ink); }
+/* ---------- 4. RIGHT: the ledger ---------- */
+.ledger {
+  display: flex; flex-direction: column; min-height: 0;
+  background: var(--paper) repeating-linear-gradient(to bottom, transparent 0 31px, rgba(29, 134, 86, .07) 31px 32px);
+}
+.tabs { display: flex; gap: 8px; padding: 10px 16px 0; background: var(--paper-2); align-items: flex-end; box-shadow: inset 0 -1px 0 var(--rule); }
+/* one row of tabs; if they ever don't fit (more tabs, a narrow window) the row scrolls sideways instead of wrapping */
+.tabrow { display: flex; gap: 2px; flex-wrap: nowrap; flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.tabrow::-webkit-scrollbar { display: none; }
+.tab {
+  appearance: none; border: 0; cursor: pointer; padding: 9px 11px; border-radius: 10px 10px 0 0; background: transparent;
+  color: var(--muted); font-size: 19px; transition: background .15s, color .15s; position: relative; flex: none;
+}
+.tab:hover { color: var(--ink); }
+.tab[aria-selected="true"] { background: var(--paper); color: var(--ink); box-shadow: inset 0 3px 0 var(--gold); }   /* gold strip on top of the open tab */
 .badge { background: var(--money); color: #fff; border-radius: 10px; padding: 0 7px; font: 700 13px var(--body); margin-left: 5px; vertical-align: 2px; letter-spacing: 0; }
-.buymode { margin-left: auto; display: flex; gap: 4px; padding-bottom: 7px; align-items: center; font-size: 13px; color: var(--muted); }
-.buymode button { appearance: none; border: 2px solid var(--ink); background: transparent; border-radius: 6px; padding: 3px 9px; font: 700 13px var(--body); cursor: pointer; }
+.buymode { margin-left: auto; flex: none; display: flex; gap: 4px; padding-bottom: 7px; align-items: center; font-size: 13px; color: var(--muted); }
+.buymode button { appearance: none; border: 2px solid var(--ink); background: transparent; border-radius: 8px; padding: 3px 9px; font: 700 13px var(--body); cursor: pointer; }
 .buymode button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
 .pane { overflow-y: auto; padding: 14px 16px 28px; display: none; flex-direction: column; gap: 10px; flex: 1; }
-.pane.on { display: flex; }
+.pane.on { display: flex; animation: fade-in .18s ease-out; }
 .pane-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .pane-head .grow { flex: 1; color: var(--muted); font-size: 14px; }
 .note { font-size: 14px; color: var(--muted); margin: 2px; }
 
-/* a business: deal card or empire row */
-.biz { display: grid; grid-template-columns: 44px 1fr auto; gap: 4px 12px; align-items: center; background: #fbfcf7; border: 1px solid var(--rule); border-left: 6px solid var(--rule); border-radius: 10px; padding: 10px 12px; }
-.biz.affordable { border-left-color: var(--money); }
-.logo { width: 44px; height: 44px; display: grid; place-items: center; color: #fff; font: 800 16px var(--display); font-stretch: 75%; grid-row: span 2; }
+/* ---------- 5. Cards ---------- */
+/* .biz: one business. Used for deal cards, Empire rows and upgrades.
+   Layout: logo | name, details, chips, numbers | buy button.
+   The colored bar down the left edge turns green when you can afford it. */
+.biz {
+  display: grid; grid-template-columns: 44px 1fr auto; gap: 4px 12px; align-items: center;
+  background: var(--surface); border: 1px solid var(--rule); border-radius: var(--r-card); padding: 10px 12px 10px 16px;
+  box-shadow: inset 5px 0 0 var(--rule), var(--shadow-1); transition: box-shadow .2s, transform .2s;
+}
+.biz.affordable { box-shadow: inset 5px 0 0 var(--money), var(--shadow-1); }
+.logo {
+  width: 44px; height: 44px; display: grid; place-items: center; color: #fff; font: 800 16px var(--display); font-stretch: 75%;
+  grid-row: span 2; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .18), inset 0 2px 0 rgba(255, 255, 255, .22);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, .25);
+}
 .biz h3 { margin: 0; font-size: 22px; line-height: 1.05; }
+.biz .lvl { font-family: var(--mono) !important; font-size: 14px !important; font-weight: 600; color: var(--muted); letter-spacing: 0; }
 .biz .sub { font-size: 13px; color: var(--muted); }
 .biz .chips { grid-column: 2; display: flex; gap: 5px; flex-wrap: wrap; }
-.chip { font: 600 12px var(--body); padding: 2px 7px; border-radius: 10px; background: var(--rule); color: var(--ink); }
-.chip.good { background: #d3ecd9; color: #1d6a3f; }
-.chip.bad { background: #f3d6d2; color: #8f2d25; }
+.chip { font: 600 12px var(--body); padding: 2px 8px; border-radius: 10px; background: var(--rule); color: var(--ink); }
+.chip.good { background: var(--money-soft); color: var(--money-ink); }
+.chip.bad { background: var(--loss-soft); color: var(--loss-ink); }
 .chip.great { background: var(--money); color: #fff; }
+.chip.gold { background: var(--gold-soft); color: #7a5208; }
 .biz .line { grid-column: 2; font: 13px var(--mono); color: var(--ink); }
-.buy { grid-row: 1 / span 3; grid-column: 3; appearance: none; border: 0; cursor: pointer; border-radius: 8px; min-width: 118px; padding: 9px 10px; background: var(--ink); color: var(--paper); font: 600 16px var(--mono); text-align: center; font-variant-numeric: tabular-nums; }
-.buy small { display: block; font: 12px var(--body); opacity: .85; }
-.buy[aria-disabled="true"] { background: #c4ccbc; color: #6d7569; cursor: default; }
-.smallbtn { appearance: none; border: 2px solid var(--ink); background: transparent; border-radius: 8px; padding: 6px 12px; cursor: pointer; font-weight: 700; }
+/* the buy / expand button on the right of a card */
+.buy {
+  grid-row: 1 / span 3; grid-column: 3; appearance: none; border: 0; cursor: pointer; border-radius: var(--r-btn); min-width: 118px; padding: 9px 10px;
+  background: var(--money); color: #fff; font: 700 16px var(--mono); text-align: center; font-variant-numeric: tabular-nums;
+  box-shadow: 0 3px 0 var(--money-ink); transition: transform .06s, box-shadow .06s, background .2s;
+}
+.buy:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--money-ink); }
+.buy small { display: block; font: 12px var(--body); opacity: .9; }
+.buy[aria-disabled="true"] { background: var(--off); color: var(--off-ink); cursor: default; box-shadow: none; transform: none; }
+.smallbtn { appearance: none; border: 2px solid var(--ink); background: transparent; border-radius: 8px; padding: 6px 12px; cursor: pointer; font-weight: 700; transition: background .15s; }
+.smallbtn:hover { background: rgba(24, 32, 46, .06); }
 .smallbtn[aria-disabled="true"] { opacity: .45; cursor: default; }
-.card { background: #fbfcf7; border: 1px solid var(--rule); border-radius: 10px; padding: 14px; display: grid; gap: 10px; }
+/* .card: a plain panel (Retire, Stats, each investment) */
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--r-card); padding: 14px; display: grid; gap: 10px; box-shadow: var(--shadow-1); }
 .card h2 { margin: 0; font-size: 28px; line-height: 1; }
 .card p { margin: 0; }
-.bigbtn { appearance: none; border: 0; cursor: pointer; border-radius: 10px; padding: 11px 16px; background: var(--ink); color: var(--paper); font-size: 20px; justify-self: start; }
-.bigbtn.go { background: var(--money); color: #fff; }
-.bigbtn.danger { background: var(--loss); color: #fff; }
-.bigbtn[aria-disabled="true"] { background: #c4ccbc; color: #6d7569; cursor: default; }
+.bigbtn {
+  appearance: none; border: 0; cursor: pointer; border-radius: var(--r-btn); padding: 11px 16px; background: var(--ink); color: var(--paper);
+  font-size: 20px; justify-self: start; box-shadow: 0 3px 0 #05080f; transition: transform .06s, box-shadow .06s;
+}
+.bigbtn:active { transform: translateY(2px); box-shadow: 0 1px 0 #05080f; }
+.bigbtn.go { background: var(--money); color: #fff; box-shadow: 0 3px 0 var(--money-ink); }
+.bigbtn.danger { background: var(--loss); color: #fff; box-shadow: 0 3px 0 var(--loss-ink); }
+.bigbtn[aria-disabled="true"] { background: var(--off); color: var(--off-ink); cursor: default; box-shadow: none; transform: none; }
 .stats { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; font-size: 15px; margin: 0; }
 .stats dt { color: var(--muted); }
 .stats dd { margin: 0; font-family: var(--mono); font-variant-numeric: tabular-nums; }
-textarea { width: 100%; min-height: 80px; font: 13px var(--mono); border-radius: 6px; border: 2px solid var(--rule); padding: 8px; background: #fff; }
+textarea { width: 100%; min-height: 80px; font: 13px var(--mono); border-radius: 8px; border: 2px solid var(--rule); padding: 8px; background: #fff; }
+/* settings rows (Look and feel card): label + a segmented button group */
+.setting { display: flex; gap: 8px 12px; align-items: center; flex-wrap: wrap; }
+.setting > span { min-width: 60px; font-weight: 700; }
+.seg { display: inline-flex; flex-wrap: wrap; border: 2px solid var(--ink); border-radius: 10px; overflow: hidden; }
+.seg button { appearance: none; border: 0; background: transparent; padding: 6px 11px; font: 700 14px var(--body); cursor: pointer; }
+.seg button + button { border-left: 2px solid var(--ink); }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
 
-.modal-back { position: fixed; inset: 0; background: rgba(12,16,26,.65); display: none; place-items: center; z-index: 10; padding: 16px; }
-.modal-back.on { display: grid; }
-.modal { background: var(--paper); border-radius: 14px; padding: 20px; max-width: 440px; width: 100%; display: grid; gap: 12px; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+/* ---------- 6. THEME KIT for investment cards ----------
+   Each investment draws its own card on the Invest tab (see 20-invest.js).
+   The card itself is <section class="card inv">. Inside it, use these so
+   every investment looks like part of the same game:
+
+   <div class="card-head">                  title row: name left, figure right
+     <h2 class="cond">Stocks</h2>
+     <span class="figure up">+$1.2K/sec</span>   big number (.up green / .down red)
+   </div>
+   <p class="note">One-line explanation.</p>
+   <dl class="kv"><dt>Owned</dt><dd>12 shares</dd>...</dl>   label / value pairs
+   <div class="meter"><i style="width:40%"></i></div>         progress bar
+     (.meter.gold / .meter.loss for other colors)
+   <div class="chart"><canvas></canvas></div>  price chart: draw with
+     sparkline(canvas, values) from 13-fx.js
+   <ul class="rows">                         a list of holdings
+     <li class="row"><div><b>Name</b><small>detail</small></div>
+       <span class="num">$12K</span><button class="smallbtn">Sell</button></li>
+   </ul>
+   <div class="btn-row"><button class="bigbtn go cond">Buy</button>...</div>
+   Chips: <span class="chip good|bad|great|gold">text</span>.
+   Buttons: .bigbtn (.go / .danger), .smallbtn, .buy; use aria-disabled="true"
+   for "can't afford" so the controller can still reach it.
+   For a celebration, call fxBurst(element, "buy" | "sale" | "spark").
+   ------------------------------------------------------------------- */
+.card.inv { gap: 8px; }
+.card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 6px 12px; flex-wrap: wrap; }
+.card-head h2 { margin: 0; }
+.figure { font: 700 22px var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+.figure.up { color: var(--money); } .figure.down { color: var(--loss); }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; margin: 0; font-size: 14px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+.meter { height: 8px; background: var(--rule); border-radius: 4px; overflow: hidden; }
+.meter i { display: block; height: 100%; width: 0; background: var(--money); border-radius: 4px; transition: width .3s ease-out; }
+.meter.gold i { background: var(--gold); } .meter.loss i { background: var(--loss); }
+.chart { height: 72px; border-radius: 10px; background: linear-gradient(180deg, #fff, var(--paper)); border: 1px solid var(--rule); overflow: hidden; }
+.chart canvas { width: 100%; height: 100%; display: block; }
+.rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.row { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; padding: 8px 10px; background: #fff; border: 1px solid var(--rule); border-radius: 10px; }
+.row small { display: block; color: var(--muted); font-size: 12px; }
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+/* ---------- 7. Pop-ups ---------- */
+.modal-back { position: fixed; inset: 0; background: rgba(9, 13, 22, .62); display: none; place-items: center; z-index: 10; padding: 16px; }
+.modal-back.on { display: grid; animation: fade-in .18s ease-out; }
+.modal { background: var(--paper); border-radius: 18px; padding: 20px; max-width: 440px; width: 100%; display: grid; gap: 12px; box-shadow: 0 24px 60px rgba(0, 0, 0, .5); }
+.modal-back.on .modal { animation: pop-in .28s cubic-bezier(.2, .9, .3, 1.25); }
 .modal h2 { margin: 0; font-size: 34px; line-height: 1; }
-.modal .amount { font: 600 36px var(--mono); color: var(--money); }
-/* the business sheet and its mini games */
-.sense { background: #fbfcf7; border: 1px solid var(--rule); border-radius: 10px; padding: 8px 12px; display: grid; gap: 4px; }
+.modal .amount { font: 700 36px var(--mono); color: var(--money); }
+/* Deal sense progress box on the Deals tab */
+.sense { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--r-card); padding: 8px 12px; display: grid; gap: 4px; box-shadow: var(--shadow-1); }
 .sense-top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; flex-wrap: wrap; }
 .sense-top strong { font-size: 18px; }
 .sense-top span { font: 13px var(--mono); color: var(--muted); }
 .sense .bar { height: 6px; background: var(--rule); border-radius: 3px; overflow: hidden; }
-.sense .bar i { display: block; height: 100%; background: var(--money); }
+.sense .bar i { display: block; height: 100%; background: var(--money); transition: width .4s ease-out; }
 .sense .note { margin: 0; font-size: 13px; }
 .biz .acts { grid-column: 2; display: flex; gap: 6px; flex-wrap: wrap; }
 .biz .acts .smallbtn { padding: 4px 10px; font-size: 14px; }
+/* the business sheet and its mini games */
 .sheet { max-width: 560px; max-height: calc(100vh - 32px); overflow-y: auto; }
 .sheet h3 { margin: 4px 0 0; font-size: 20px; }
 .sheet .sub { color: var(--muted); font-size: 14px; margin: 0; }
@@ -160,33 +328,69 @@ textarea { width: 100%; min-height: 80px; font: 13px var(--mono); border-radius:
 .gauge .zone { position: absolute; top: 0; bottom: 0; background: #7cc79a; }
 .gauge .needle { position: absolute; top: 0; bottom: 0; width: 4px; margin-left: -2px; background: var(--ink); }
 .gstat { font: 14px var(--mono); }
-/* investment cards on the Invest tab (each module draws its own inside) */
-.card.inv { gap: 8px; }
-.toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--night); color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 15px; z-index: 11; opacity: 0; transition: opacity .25s; pointer-events: none; max-width: 90vw; text-align: center; }
-.toast.on { opacity: 1; }
+.toast {
+  position: fixed; bottom: 18px; left: 50%; transform: translate(-50%, 12px); background: var(--night); color: #fff; padding: 10px 16px;
+  border-radius: 12px; font-size: 15px; z-index: 11; opacity: 0; transition: opacity .25s, transform .25s; pointer-events: none;
+  max-width: 90vw; text-align: center; box-shadow: 0 10px 30px rgba(0, 0, 0, .35); border: 1px solid rgba(255, 255, 255, .08);
+}
+.toast.on { opacity: 1; transform: translate(-50%, 0); }
 
-/* ---------- phones ---------- */
+/* ---------- 8. Motion ---------- */
+/* the effects layer (13-fx.js draws coins and confetti here) */
+#fx { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 12; }
+/* 13-fx.js flashes a card when you buy it or hit a level milestone */
+.biz.is-new { animation: glow-new 1.4s ease-out; }
+.biz.bump { animation: bump .35s ease-out; }
+@keyframes pop-rise {
+  0%   { transform: translateY(0) scale(.6); opacity: 0; }
+  15%  { transform: translateY(-10px) scale(1.15); opacity: 1; }
+  100% { transform: translateY(-74px) scale(1); opacity: 0; }
+}
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pop-in { from { transform: scale(.88) translateY(10px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes slide-up { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes glow-new {
+  0%   { box-shadow: inset 5px 0 0 var(--gold), 0 0 0 3px var(--gold), 0 0 26px rgba(244, 183, 64, .7); }
+  100% { box-shadow: inset 5px 0 0 var(--rule), 0 0 0 0 transparent, var(--shadow-1); }
+}
+@keyframes bump { 0% { transform: scale(1); } 40% { transform: scale(1.015); } 100% { transform: scale(1); } }
+/* Calm mode: the player's device asks for less motion (or they picked
+   "Calm" in Look and feel). 13-fx.js puts .calm on <html>; it also stops
+   the coins, confetti, cash count-up and window flicker. Things still
+   change, they just don't fly around. */
+.calm *, .calm *::before, .calm *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+.calm .float { animation: fade-out 1s linear forwards !important; }
+@keyframes fade-out { from { opacity: 1; } to { opacity: 0; } }
+
+/* ---------- 9. Phones ---------- */
 @media (max-width: 760px) {
   body { overflow: auto; }
   .app { display: block; height: auto; }
-  .terminal { position: sticky; top: 0; z-index: 5; padding: 10px 12px; gap: 7px; }
-  .brand h1 { font-size: 24px; white-space: nowrap; }
-  .brand .save-state { font-size: 11px; max-width: 34%; }
-  .ticker .cash { font-size: 30px; }
-  .ticker .rates { font-size: 13px; gap: 10px; }
-  .sky { flex: none; height: 84px; min-height: 0; }
+  /* a compact terminal pinned to the top: about a third of the screen */
+  .terminal { position: sticky; top: 0; z-index: 5; padding: 8px 12px 10px; gap: 6px; }
+  .brand h1 { font-size: 22px; white-space: nowrap; }
+  .rank { font-size: 11px; margin-top: 2px; }
+  .brand .save-state { font-size: 10px; max-width: 34%; }
+  .ticker { padding: 6px 10px; border-radius: 10px; }
+  .ticker .cash { font-size: 28px; }
+  .ticker .rates { font-size: 12px; gap: 2px 10px; }
+  .sky { flex: none; height: 76px; min-height: 0; border-radius: 10px; }
   .event { position: fixed; left: 10px; right: 10px; bottom: 10px; top: auto; }
-  .job { font-size: 12px; }
-  .hustle { padding: 11px; font-size: 26px; }
+  .job { font-size: 11px; gap: 3px; }
+  .hustle { padding: 10px; font-size: 25px; border-radius: 14px; }
   .hustle small { font-size: 12px; margin-top: 3px; }
   .pane { overflow: visible; }
-  .tab { padding: 8px 8px; font-size: 17px; }
-  .buymode { width: 100%; margin-left: 0; padding: 6px 0; }
-  .biz { grid-template-columns: 36px 1fr; }
+  /* tabs: one row you can swipe sideways, Expand x1/x10/Max on its own row */
+  .tabs { flex-direction: column; align-items: stretch; gap: 0; padding: 6px 0 0; position: relative; }
+  .tabrow { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding: 0 10px; }
+  .tabrow::-webkit-scrollbar { display: none; }
+  .tab { padding: 8px 10px; font-size: 17px; flex: none; }
+  .buymode { width: 100%; margin-left: 0; padding: 6px 12px; background: var(--paper); border-bottom: 1px solid var(--rule); }
+  .biz { grid-template-columns: 36px 1fr; padding: 10px 10px 10px 14px; }
   .logo { width: 36px; height: 36px; font-size: 13px; }
+  .biz h3 { font-size: 20px; }
   .buy { grid-row: auto; grid-column: 1 / -1; order: 9; }   /* button goes under the details */
 }
-@media (prefers-reduced-motion: reduce) { .float { display: none; } }
 </style>
 </head>
 <body>
@@ -228,13 +432,15 @@ textarea { width: 100%; min-height: 80px; font: 13px var(--mono); border-radius:
 
   <!-- ================= RIGHT: THE LEDGER ================= -->
   <section class="ledger">
-    <div class="tabs" role="tablist">
+    <div class="tabs">
+     <div class="tabrow" role="tablist">
       <button class="tab cond" role="tab" id="tab-deals" data-pane="deals" aria-selected="true">Deals<span class="badge" id="dealBadge" hidden>0</span></button>
       <button class="tab cond" role="tab" id="tab-empire" data-pane="empire" aria-selected="false">Empire</button>
       <button class="tab cond" role="tab" id="tab-invest" data-pane="invest" aria-selected="false" hidden>Invest</button>
       <button class="tab cond" role="tab" id="tab-upg" data-pane="upg" aria-selected="false">Upgrades<span class="badge" id="upgBadge" hidden>0</span></button>
       <button class="tab cond" role="tab" id="tab-retire" data-pane="retire" aria-selected="false">Retire</button>
       <button class="tab cond" role="tab" id="tab-set" data-pane="set" aria-selected="false">Stats</button>
+     </div>
       <div class="buymode" id="buymode" aria-label="How many levels to expand at once">
         Expand
         <button id="bm1" data-mode="1" aria-pressed="true">x1</button>
@@ -275,6 +481,23 @@ textarea { width: 100%; min-height: 80px; font: 13px var(--mono); border-radius:
     </div>
     <div class="pane" id="pane-set">
       <div class="card"><h2 class="cond">Stats</h2><dl class="stats" id="stats"></dl></div>
+      <div class="card" id="lookCard">
+        <h2 class="cond">Look and feel</h2>
+        <p class="note">Saved on this device only.</p>
+        <div class="setting"><span>Sky</span>
+          <div class="seg" role="group" aria-label="Sky">
+            <button data-sky="cycle" aria-pressed="true">Day/night</button>
+            <button data-sky="clock" aria-pressed="false">My clock</button>
+            <button data-sky="day" aria-pressed="false">Day</button>
+            <button data-sky="night" aria-pressed="false">Night</button>
+          </div></div>
+        <div class="setting"><span>Motion</span>
+          <div class="seg" role="group" aria-label="Motion">
+            <button data-motion="auto" aria-pressed="true">Like my device</button>
+            <button data-motion="full" aria-pressed="false">Full</button>
+            <button data-motion="calm" aria-pressed="false">Calm</button>
+          </div></div>
+      </div>
       <div class="card">
         <h2 class="cond">Your save</h2>
         <p>The game saves itself every 30 seconds and when you leave.</p>
@@ -308,6 +531,9 @@ textarea { width: 100%; min-height: 80px; font: 13px var(--mono); border-radius:
   </div>
 </div>
 <div class="toast" id="toast"></div>
+<!-- Effects layer: coin pops, confetti and sparkles are drawn here (13-fx.js).
+     It covers the screen but ignores taps. -->
+<canvas id="fx" aria-hidden="true"></canvas>
 
 <script>
 "use strict";
@@ -334,8 +560,9 @@ textarea { width: 100%; min-height: 80px; font: 13px var(--mono); border-radius:
      08-save.js         - this browser + your Claude account (syncs devices)
      09-screen.js       - numbers, the Deals / Empire / Upgrades / Retire / Stats tabs
      10-sheet.js        - the Manage sheet for one business, and the fix-up mini games
-     11-skyline.js      - the night skyline drawing
+     11-skyline.js      - the skyline drawing and the day/night cycle
      12-controls.js     - touch/mouse, keyboard, game controller
+     13-fx.js           - motion and feedback (coins, confetti, cash count-up), Look and feel settings
      20-invest.js       - the plug-in point for every investment type, and the Invest tab
      30-investments/    - one file per investment type (real estate, stocks, ...)
      99-start.js        - start up, and handles for the automated tests
@@ -1237,6 +1464,7 @@ function frame(nowPerf) {
   render(false);
   if (nowPerf - lastSlowRender > 250) { lastSlowRender = nowPerf; render(true); }
   drawSkyline(dt);
+  fxFrame(dt);                       // coin pops, confetti, cash flashes (13-fx.js)
   pollGamepads();
   requestAnimationFrame(frame);
 }
@@ -1587,7 +1815,7 @@ function updateStats() {
 
 function render(full) {
   const now = Date.now();
-  $("cash").textContent = money(state.cash);
+  $("cash").textContent = money(shownCash());     // counts up smoothly (13-fx.js); state.cash is the real number
   $("ips").textContent = money(incomeNow(now) + investNet()) + "/sec";
   $("tapv").textContent = money(tapValue()) + " per hustle";
   $("owned").textContent = state.biz.length + (state.biz.length === 1 ? " business" : " businesses");
@@ -1893,11 +2121,94 @@ function gameHire(box, done) {
 const MINI_GAMES = { reviews: gameReviews, books: gameBooks, machine: gameMachine, hire: gameHire };
 
 // ---------- The skyline: one building per business you own ----------
+// Drawn on a canvas every frame by drawSkyline(dt), called from the main
+// loop in 07-time.js. Layers, back to front:
+//   sky gradient -> stars -> sun or moon -> clouds -> a hazy far-off city
+//   -> your buildings -> the street -> coins from hustling -> the clock
+// The sky runs a day/night cycle (see SKY_KEYS). The player can pin it to
+// day, night, or their own clock in Stats > Look and feel (13-fx.js).
+//
+// Buildings animate: a new business rises out of the ground, expanding
+// grows it smoothly, and a sold one sinks away. In calm mode (less motion)
+// they just appear at their size and nothing twinkles.
 const canvas = $("skyline"), ctx = canvas.getContext("2d");
-const coins = [];          // little coins that fly up when you hustle
-let skyTime = 0;
-// A fixed pseudo-random number from a seed, so each building keeps the same windows
+const coins = [];          // little coins that fly up when you hustle (05-actions.js pushes { t, x })
+let skyTime = 0;           // seconds since the page opened: drives twinkles and drifting clouds
+// A fixed pseudo-random number in [0, 1) from a seed, so each building
+// keeps the same windows and each star the same spot from frame to frame.
 const seeded = n => { const x = Math.sin(n * 127.1) * 43758.5453; return x - Math.floor(x); };
+
+// ----- Day and night -----
+// One full in-game day takes SKY_DAY_MS of real time. The phase runs from
+// 0 (midnight) through 0.25 (sunrise), 0.5 (noon) and 0.75 (sunset) back
+// to 1 = 0. It comes from the real clock, so it's the same after a reload
+// and on every device, and needs nothing in the save.
+const SKY_DAY_MS = 12 * 60 * 1000;     // 12 minutes per day: roughly 6 of daylight, 4 of night, 2 of dawn/dusk
+// Key moments of the day. Colors in between are blended. top/bottom: the
+// sky gradient. stars and lights (lit windows, street lamps) fade 0..1.
+const SKY_KEYS = [
+  { at: 0.00, top: "#070d1c", bottom: "#1d2a48", stars: 1,   lights: 1 },
+  { at: 0.20, top: "#0d1530", bottom: "#2b2f55", stars: 0.9, lights: 1 },
+  { at: 0.25, top: "#33416f", bottom: "#e58f63", stars: 0.3, lights: 0.7 },   // sunrise
+  { at: 0.31, top: "#4f86c4", bottom: "#f4c995", stars: 0,   lights: 0.15 },
+  { at: 0.40, top: "#3d8ad6", bottom: "#bfe1f5", stars: 0,   lights: 0 },
+  { at: 0.60, top: "#3a86d2", bottom: "#c7e4f4", stars: 0,   lights: 0 },
+  { at: 0.70, top: "#4a74b8", bottom: "#f0c88f", stars: 0,   lights: 0.2 },
+  { at: 0.75, top: "#2f2f63", bottom: "#ee7f55", stars: 0.2, lights: 0.75 },  // sunset
+  { at: 0.80, top: "#12173a", bottom: "#4b3560", stars: 0.8, lights: 1 },
+  { at: 1.00, top: "#070d1c", bottom: "#1d2a48", stars: 1,   lights: 1 },
+];
+// Where we are in the day right now, following the player's setting
+// (look.sky, from 13-fx.js): "cycle" (default), "clock", "day" or "night".
+function dayPhase(now = Date.now()) {
+  const mode = typeof look === "object" ? look.sky : "cycle";
+  if (mode === "day") return 0.5;
+  if (mode === "night") return 0.0;
+  if (mode === "clock") { const d = new Date(now); return (d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds()) / 86400; }
+  return (now % SKY_DAY_MS) / SKY_DAY_MS;
+}
+// "#rrggbb" <-> [r, g, b], and blending between two colors (t = 0..1)
+const hexRgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+const rgbCss = (c, a = 1) => `rgba(${c.map(Math.round).join(",")},${a})`;
+const mixRgb = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
+// Sky colors and light levels for a phase, blended between the two key
+// moments either side of it.
+function skyAt(phase) {
+  let i = 0;
+  while (i < SKY_KEYS.length - 2 && phase >= SKY_KEYS[i + 1].at) i++;
+  const a = SKY_KEYS[i], b = SKY_KEYS[i + 1];
+  const t = Math.min(1, Math.max(0, (phase - a.at) / (b.at - a.at)));
+  const s = t * t * (3 - 2 * t);                // ease in and out so changes don't snap
+  return {
+    top: mixRgb(hexRgb(a.top), hexRgb(b.top), s),
+    bottom: mixRgb(hexRgb(a.bottom), hexRgb(b.bottom), s),
+    stars: a.stars + (b.stars - a.stars) * s,
+    lights: a.lights + (b.lights - a.lights) * s,
+  };
+}
+// The in-game time of day as a clock string ("6:40 PM"), for the sky's corner
+function skyClockText(phase) {
+  const mins = Math.floor(phase * 24 * 60), h = Math.floor(mins / 60), m = mins % 60;
+  return `${(h + 11) % 12 + 1}:${String(m - m % 5).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
+}
+
+// Darker version of a sector color for building sides and roofs (cached:
+// the same few colors are asked for every frame).
+const shadeCache = new Map();
+function shade(hex, f) {
+  const key = hex + f;
+  if (!shadeCache.has(key)) shadeCache.set(key, rgbCss(hexRgb(hex).map(v => v * f)));
+  return shadeCache.get(key);
+}
+
+// ----- Building animation -----
+// towers: business id -> what's on screen now { x, w, h } (eased toward the target)
+// ghosts: buildings of businesses you sold, sinking away
+const towers = new Map();
+let ghosts = [];
+let lastSkyState = null;            // when the whole state is swapped (retire, wipe, load) don't animate the difference
+let lastTint = 0;                    // last time the terminal background was re-tinted
+
 function drawSkyline(dt) {
   const dpr = window.devicePixelRatio || 1;
   const w = canvas.clientWidth, h = canvas.clientHeight;
@@ -1905,62 +2216,196 @@ function drawSkyline(dt) {
   if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   skyTime += dt;
-  // night sky
-  const g = ctx.createLinearGradient(0, 0, 0, h);
-  g.addColorStop(0, "#0b1120"); g.addColorStop(1, "#24304d");
-  ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
-  for (let i = 0; i < 40; i++) {                         // stars
-    ctx.fillStyle = `rgba(255,255,255,${0.25 + 0.35 * seeded(i + Math.floor(skyTime / 3))})`;
-    ctx.fillRect(seeded(i) * w, seeded(i + 99) * h * 0.55, 1.5, 1.5);
-  }
+  const calm = typeof motionCalm === "function" && motionCalm();
+  const now = Date.now();
+  const phase = dayPhase(now), sky = skyAt(phase);
   const ground = h - 10;
-  ctx.fillStyle = "#0a0f1b"; ctx.fillRect(0, ground, w, 10);
-  if (!state.biz.length) {
+
+  // The terminal panel's background follows the sky (a few times a second is plenty)
+  if (now - lastTint > 500) {
+    lastTint = now;
+    document.documentElement.style.setProperty("--term-top", rgbCss(mixRgb(sky.top, [14, 21, 36], 0.55)));
+  }
+
+  // 1. sky
+  const g = ctx.createLinearGradient(0, 0, 0, ground);
+  g.addColorStop(0, rgbCss(sky.top)); g.addColorStop(1, rgbCss(sky.bottom));
+  ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+
+  // 2. stars: each twinkles on its own slow beat
+  if (sky.stars > 0.02) {
+    for (let i = 0; i < 46; i++) {
+      const tw = calm ? 0.6 : 0.45 + 0.4 * Math.sin(skyTime * (0.6 + seeded(i + 7) * 1.4) + i);
+      ctx.fillStyle = `rgba(255,255,255,${(sky.stars * (0.25 + 0.5 * tw)).toFixed(3)})`;
+      ctx.fillRect(seeded(i) * w, seeded(i + 99) * ground * 0.6, 1.5, 1.5);
+    }
+  }
+
+  // 3. sun (phase 0.22..0.78) or moon (the rest) on an arc across the sky
+  const arc = (t, r) => [w * (0.06 + 0.88 * t), ground - Math.sin(Math.PI * t) * (ground * 0.8) + r];
+  const sunT = (phase - 0.22) / 0.56;
+  if (sunT > 0 && sunT < 1) {
+    const r = Math.max(6, Math.min(14, h * 0.07)), [sx, sy] = arc(sunT, r);
+    const glow = ctx.createRadialGradient(sx, sy, r * 0.5, sx, sy, r * 4);
+    glow.addColorStop(0, "rgba(255,226,150,.55)"); glow.addColorStop(1, "rgba(255,226,150,0)");
+    ctx.fillStyle = glow; ctx.fillRect(sx - r * 4, sy - r * 4, r * 8, r * 8);
+    ctx.fillStyle = "#ffe7a3"; ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
+  } else {
+    const moonT = ((phase + 1 - 0.78) % 1) / 0.44;          // 0.78 -> 0.22 the next morning
+    if (moonT > 0 && moonT < 1) {
+      const r = Math.max(5, Math.min(10, h * 0.05)), [mx, my] = arc(moonT, r);
+      ctx.fillStyle = "#e9edf7"; ctx.beginPath(); ctx.arc(mx, my, r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = rgbCss(sky.top); ctx.beginPath(); ctx.arc(mx + r * 0.45, my - r * 0.25, r * 0.85, 0, Math.PI * 2); ctx.fill();   // crescent
+    }
+  }
+
+  // 4. clouds by day: soft blobs drifting slowly left to right
+  const day = 1 - sky.lights;
+  if (day > 0.05) {
+    ctx.fillStyle = `rgba(255,255,255,${(0.55 * day).toFixed(3)})`;
+    for (let i = 0; i < 4; i++) {
+      const cw = 40 + seeded(i + 40) * 50, span = w + cw * 2;
+      const cx = ((seeded(i + 50) * span + (calm ? 0 : skyTime * (4 + i * 2))) % span) - cw;
+      const cy = 8 + seeded(i + 60) * ground * 0.35;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, cw * 0.5, 7, 0, 0, Math.PI * 2);
+      ctx.ellipse(cx + cw * 0.18, cy - 5, cw * 0.25, 7, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // 5. a hazy far-off city behind yours, for depth
+  // (kept low and faint so it never competes with your own buildings)
+  ctx.fillStyle = rgbCss(mixRgb(sky.bottom, sky.top, 0.6), 0.35);
+  for (let x = 0, i = 0; x < w; i++) {
+    const bw = 12 + seeded(i + 300) * 18, bh = Math.min(70, ground * (0.08 + seeded(i + 400) * 0.14));
+    ctx.fillRect(x, ground - bh, bw - 1, bh);
+    x += bw;
+  }
+
+  // 6. your buildings
+  // A different save was swapped in (retire, wipe, load, account sync):
+  // start over without rising/sinking every building at once.
+  const swapped = state !== lastSkyState;
+  if (swapped) { towers.clear(); ghosts = []; lastSkyState = state; }
+  if (!state.biz.length && !ghosts.length) {
     const msg = "Your skyline starts with your first business.";
     let size = 14;
-    ctx.font = `${size}px 'IBM Plex Mono', monospace`;
-    while (ctx.measureText(msg).width > w - 20 && size > 9) ctx.font = `${--size}px 'IBM Plex Mono', monospace`;   // shrink to fit
-    ctx.fillStyle = "#8794ad"; ctx.textAlign = "center";
-    ctx.fillText(msg, w / 2, h / 2);
-  } else {
-    // building width shrinks when you own a lot, so they always fit
-    const n = state.biz.length;
-    const slot = Math.min(34, (w - 16) / n);
-    const startX = (w - slot * n) / 2;
-    const tallest = h - 24;
-    state.biz.forEach((b, i) => {
-      const ind = IND[b.ind];
-      const bw = Math.max(2, slot * (0.55 + ind.tier * 0.07));
-      const bh = Math.min(tallest, (0.18 + ind.tier * 0.13) * tallest + Math.min(b.level, 100) / 100 * tallest * 0.25);
-      const x = startX + i * slot + (slot - bw) / 2, y = ground - bh;
-      ctx.fillStyle = SECTORS[ind.sector].color;
-      ctx.globalAlpha = 0.85;
-      ctx.fillRect(x, y, bw, bh);
-      ctx.globalAlpha = 1;
-      if (bw >= 6) {                                   // lit windows, twinkling slowly
-        ctx.fillStyle = "#ffe6a8";
-        for (let wy = y + 4; wy < ground - 4; wy += 6) {
-          for (let wx = x + 2; wx < x + bw - 3; wx += 5) {
-            if (seeded(b.id * 31 + wx * 7 + wy * 13 + Math.floor(skyTime / 4)) > 0.55) ctx.fillRect(wx, wy, 2, 3);
-          }
-        }
-      }
-      if (Date.now() < (b.viralUntil || 0)) {           // viral: a beacon on the roof
-        ctx.fillStyle = Math.floor(skyTime * 4) % 2 ? "#f2b84b" : "#fff";
-        ctx.fillRect(x + bw / 2 - 2, y - 6, 4, 6);
-      }
-    });
+    ctx.font = `${size}px 'JetBrains Mono', monospace`;
+    while (ctx.measureText(msg).width > w - 20 && size > 9) ctx.font = `${--size}px 'JetBrains Mono', monospace`;   // shrink to fit
+    ctx.fillStyle = day > 0.5 ? "rgba(20,32,58,.75)" : "#8c98b0"; ctx.textAlign = "center";
+    ctx.fillText(msg, w / 2, ground * 0.55);
+    ctx.textAlign = "left";
   }
-  // coins from hustling
-  for (const c of coins) {
+  // building width shrinks when you own a lot, so they always fit
+  const n = state.biz.length;
+  const slot = n ? Math.min(34, (w - 16) / n) : 0;
+  const startX = (w - slot * n) / 2;
+  const tallest = ground - 14;
+  const ease = calm ? 1 : 1 - Math.exp(-dt * 7);           // how far to move toward the target this frame
+  const seen = new Set();
+  state.biz.forEach((b, i) => {
+    const ind = IND[b.ind];
+    const tw = Math.max(2, slot * (0.55 + ind.tier * 0.07));
+    const th = Math.min(tallest, (0.18 + ind.tier * 0.13) * tallest + Math.min(b.level, 100) / 100 * tallest * 0.25);
+    const tx = startX + i * slot + (slot - tw) / 2;
+    let t = towers.get(b.id);
+    // a business bought just now rises from the ground; on page load or a
+    // save swap the city is simply there
+    if (!t) { t = { x: tx, w: tw, h: swapped || skyTime < 0.5 || calm ? th : 0 }; towers.set(b.id, t); }
+    t.x += (tx - t.x) * ease; t.w += (tw - t.w) * ease; t.h += (th - t.h) * ease;
+    t.b = b; t.ind = ind;
+    seen.add(b.id);
+    drawTower(t, ground, sky, now, calm, 1);
+  });
+  // businesses that are gone (sold) sink into the ground and fade
+  for (const [id, t] of towers) if (!seen.has(id)) { towers.delete(id); if (!calm) ghosts.push({ ...t, fade: 1 }); }
+  ghosts = ghosts.filter(gh => (gh.fade -= dt * 1.2) > 0);
+  for (const gh of ghosts) { gh.h *= 1 - Math.min(1, dt * 3); drawTower(gh, ground, sky, now, calm, gh.fade); }
+
+  // 7. the street, with lamps that glow at night
+  ctx.fillStyle = rgbCss(mixRgb([10, 15, 27], [52, 58, 70], day)); ctx.fillRect(0, ground, w, 10);
+  ctx.fillStyle = `rgba(255,255,255,${(0.08 + 0.12 * day).toFixed(3)})`;
+  for (let x = 6; x < w; x += 22) ctx.fillRect(x, ground + 5, 10, 1);           // lane markings
+  if (sky.lights > 0.05) {
+    ctx.fillStyle = `rgba(255,214,140,${(0.8 * sky.lights).toFixed(3)})`;
+    for (let x = 14; x < w; x += 64) ctx.fillRect(x, ground + 1, 3, 2);
+  }
+
+  // 8. coins from hustling: spin and rise out of the street
+  if (!calm) for (const c of coins) {
     c.t += dt;
-    ctx.fillStyle = "#f2b84b";
-    ctx.beginPath(); ctx.arc(w * (0.3 + c.x * 0.4), ground - c.t * 120, 4, 0, Math.PI * 2); ctx.fill();
+    const cx = w * (0.3 + c.x * 0.4), cy = ground - c.t * 110, spin = Math.abs(Math.cos(c.t * 9 + c.x * 6));
+    ctx.globalAlpha = Math.max(0, 1 - c.t);
+    ctx.fillStyle = "#f4b740";
+    ctx.beginPath(); ctx.ellipse(cx, cy, 4 * spin + 0.6, 4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
   }
+  else for (const c of coins) c.t = 2;                     // calm: skip them
   while (coins.length && coins[0].t > 1) coins.shift();
+
+  // 9. the in-game clock, top left (only while the day/night cycle is on)
+  if (typeof look !== "object" || look.sky === "cycle" || look.sky === "clock") {
+    ctx.font = `600 ${h < 100 ? 9 : 11}px 'JetBrains Mono', monospace`;
+    ctx.fillStyle = day > 0.5 ? "rgba(14,21,36,.6)" : "rgba(223,230,242,.6)";
+    ctx.fillText(skyClockText(phase), 8, h < 100 ? 12 : 16);
+  }
 }
 
-
+// One building. t = { x, w, h, b (the business), ind (its industry) };
+// alpha < 1 for a sold building fading out.
+function drawTower(t, ground, sky, now, calm, alpha) {
+  const { b, ind } = t;
+  const x = t.x, bw = t.w, bh = t.h, y = ground - bh;
+  if (bh < 1) return;
+  const color = SECTORS[ind.sector].color, night = sky.lights;
+  ctx.globalAlpha = alpha;
+  // body: full color by day, darker at night; the right third is in shade
+  ctx.fillStyle = color; ctx.fillRect(x, y, bw, bh);
+  ctx.fillStyle = shade(color, 0.72); ctx.fillRect(x + bw * 0.68, y, bw * 0.32, bh);
+  if (night > 0) { ctx.fillStyle = `rgba(6,10,22,${(0.45 * night).toFixed(3)})`; ctx.fillRect(x, y, bw, bh); }
+  // roof by size: a parapet on mid-size businesses, an antenna on the big ones
+  if (ind.tier >= 2 && bw >= 6) { ctx.fillStyle = shade(color, 0.55); ctx.fillRect(x - 1, y - 2, bw + 2, 2); }
+  if (ind.tier >= 4 && bh > 20) {
+    ctx.fillStyle = shade(color, 0.5); ctx.fillRect(x + bw / 2 - 0.5, y - 9, 1, 9);
+    if (night > 0.3 && (calm || Math.floor(skyTime * 1.2 + b.id) % 2)) { ctx.fillStyle = "#ff5a4a"; ctx.fillRect(x + bw / 2 - 1, y - 10, 2, 2); }   // blinking warning light
+  }
+  // a striped awning on small shops
+  if (ind.tier <= 1 && bw >= 10 && bh > 14) {
+    for (let sx = 0; sx < bw; sx += 3) { ctx.fillStyle = (sx / 3) % 2 ? "#fff" : shade(color, 0.6); ctx.fillRect(x + sx, ground - 9, Math.min(3, bw - sx), 3); }
+  }
+  // windows: lit and flickering at night, glassy by day
+  if (bw >= 6) {
+    const lit = `rgba(255,222,150,${(0.25 + 0.75 * night).toFixed(3)})`, glass = `rgba(255,255,255,${(0.28 * (1 - night)).toFixed(3)})`;
+    const slow = calm ? 0 : skyTime;
+    for (let wy = y + 4; wy < ground - (ind.tier <= 1 ? 12 : 4); wy += 6) {
+      for (let wx = x + 2; wx < x + bw - 3; wx += 5) {
+        const s = b.id * 31 + wx * 7 + wy * 13;
+        // each window switches on/off on its own slow schedule (8-20 s)
+        const on = seeded(s + Math.floor((slow + seeded(s) * 20) / (8 + seeded(s + 1) * 12))) > 0.45;
+        if (night > 0.05 && on) { ctx.fillStyle = lit; ctx.fillRect(wx, wy, 2, 3); }
+        else if (night < 0.95) { ctx.fillStyle = glass; ctx.fillRect(wx, wy, 2, 3); }
+      }
+    }
+  }
+  // viral: a beacon on the roof, plus searchlights at night
+  if (now < (b.viralUntil || 0)) {
+    const blink = calm ? 1 : Math.floor(skyTime * 4) % 2;
+    ctx.fillStyle = blink ? "#f4b740" : "#fff";
+    ctx.fillRect(x + bw / 2 - 2, y - 6, 4, 6);
+    if (night > 0.3 && !calm) {
+      const a = Math.sin(skyTime * 1.5) * 0.5;
+      ctx.fillStyle = `rgba(255,236,170,${(0.18 * night).toFixed(3)})`;
+      for (const side of [-1, 1]) {
+        ctx.beginPath(); ctx.moveTo(x + bw / 2, y - 6);
+        ctx.lineTo(x + bw / 2 + Math.sin(a * side + side * 0.3) * 200 - 8, y - 200);
+        ctx.lineTo(x + bw / 2 + Math.sin(a * side + side * 0.3) * 200 + 8, y - 200);
+        ctx.fill();
+      }
+    }
+  }
+  ctx.globalAlpha = 1;
+}
 /* =====================================================================
    9. CONTROLS
    Keyboard: Space = hustle, arrows = move between buttons, Enter = press,
@@ -2111,6 +2556,299 @@ function pollGamepads() {
 }
 
 
+/* =====================================================================
+   13. MOTION AND FEEDBACK
+   Makes the game feel alive without changing how it plays:
+     - coins pop out of the Hustle button (a bigger shower when a job is done)
+     - the cash number counts up and down smoothly instead of jumping,
+       and flashes green on a big gain, red when you spend
+     - buying a business: a burst of confetti where you tapped, and its
+       card glows on the Empire tab; its building rises in the skyline
+     - expanding: coins hop off the button; a level milestone (10/25/50/100)
+       gets a star burst and the card bumps
+     - upgrades and finished fix-ups: sparkles
+     - selling a business: a shower of coins over the whole screen
+   Plus the "Look and feel" settings (sky mode and motion) on the Stats tab.
+
+   HOW IT FINDS OUT WHAT HAPPENED
+   Rather than every action calling into this file, fxFrame() runs once a
+   frame (from 07-time.js) and compares a few counters with last frame:
+   hustles, jobs, businesses bought and sold, total levels, upgrades,
+   fixes. That keeps the game rules free of drawing code, and catches
+   every way of doing something (touch, mouse, keyboard, controller).
+   Where to draw comes from the last button pressed (recorded below).
+
+   Everything is drawn on one full-screen canvas (#fx) that ignores taps,
+   and is only redrawn while something is flying, so it costs nothing at
+   rest. In calm mode none of it runs: numbers change instantly.
+
+   FOR OTHER FILES (investment cards):
+     fxBurst(elementOrRect, "buy" | "sale" | "spark" | "coins")
+     sparkline(canvas, values, { color })   draws a small price chart
+     motionCalm()   true when animations should be skipped
+   ===================================================================== */
+
+// ----- Look and feel settings (this device only) -----
+// sky:    "cycle" (12-minute day/night), "clock" (follows your real clock), "day", "night"
+// motion: "auto" (follow the device's reduce-motion setting), "full", "calm"
+const LOOK_KEY = "selfmade-look-v1";
+const look = { sky: "cycle", motion: "auto" };
+try {
+  const saved = JSON.parse(localStorage.getItem(LOOK_KEY) || "{}");
+  if (["cycle", "clock", "day", "night"].includes(saved.sky)) look.sky = saved.sky;
+  if (["auto", "full", "calm"].includes(saved.motion)) look.motion = saved.motion;
+} catch { /* private window or blocked storage: use the defaults */ }
+const reduceQuery = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
+const motionCalm = () => look.motion === "calm" || (look.motion === "auto" && !!reduceQuery?.matches);
+function applyLook() {
+  document.documentElement.classList.toggle("calm", motionCalm());
+  for (const b of document.querySelectorAll("[data-sky]")) b.setAttribute("aria-pressed", String(b.dataset.sky === look.sky));
+  for (const b of document.querySelectorAll("[data-motion]")) b.setAttribute("aria-pressed", String(b.dataset.motion === look.motion));
+  if (motionCalm()) clearFx();
+}
+function setLook(key, value) {
+  look[key] = value;
+  try { localStorage.setItem(LOOK_KEY, JSON.stringify(look)); } catch { /* not saved, still applied */ }
+  applyLook();
+}
+for (const b of document.querySelectorAll("[data-sky]")) b.addEventListener("click", () => setLook("sky", b.dataset.sky));
+for (const b of document.querySelectorAll("[data-motion]")) b.addEventListener("click", () => setLook("motion", b.dataset.motion));
+reduceQuery?.addEventListener?.("change", applyLook);          // the player changes their device setting mid-game
+
+// ----- Where the player last pressed -----
+// Recorded before the button's own handler runs (capture phase), because
+// buying rebuilds the list and the pressed button disappears.
+let lastPress = null;        // { x, y, t, onHustle }
+function notePress(e) {
+  const btn = e.target.closest?.("button");
+  const r = btn ? btn.getBoundingClientRect() : null;
+  // a real tap has coordinates; a keyboard or controller press doesn't, so use the button's middle
+  const x = e.clientX || (r ? r.left + r.width / 2 : 0), y = e.clientY || (r ? r.top + r.height / 2 : 0);
+  lastPress = { x, y, t: performance.now(), onHustle: btn?.id === "hustle" };
+}
+document.addEventListener("pointerdown", notePress, true);
+document.addEventListener("click", e => { if (e.detail === 0 || !lastPress || performance.now() - lastPress.t > 600) notePress(e); }, true);
+// Where to put an effect: the recent press, or else the middle of a fallback element
+function pressPoint(fallbackEl, maxAge = 700) {
+  if (lastPress && performance.now() - lastPress.t < maxAge) return [lastPress.x, lastPress.y];
+  const r = fallbackEl?.getBoundingClientRect?.();
+  return r && r.width ? [r.left + r.width / 2, r.top + r.height / 2] : [innerWidth / 2, innerHeight / 2];
+}
+
+// ----- The effects layer -----
+const fxCanvas = $("fx"), fxCtx = fxCanvas.getContext("2d");
+let parts = [];              // everything flying right now
+let fxDirty = false;         // the canvas has something on it that needs clearing
+const MAX_PARTS = 360;       // safety cap so a flood of taps can't slow a phone down
+const FX_COLORS = ["#f4b740", "#1d8656", "#3a8fb7", "#d35d8e", "#8e5ba8", "#ffffff"];
+function addPart(p) {
+  if (motionCalm()) return;
+  if (parts.length >= MAX_PARTS) parts.shift();
+  parts.push(p);
+}
+// n coins thrown up from (x, y). spread: how wide; up: how hard.
+function coinPop(x, y, n = 3, spread = 140, up = 380) {
+  for (let i = 0; i < n; i++) addPart({ kind: "coin", x, y, vx: (Math.random() - 0.5) * spread, vy: -up * (0.7 + Math.random() * 0.5),
+    g: 1100, life: 0.9 + Math.random() * 0.3, age: 0, r: 5 + Math.random() * 2, spin: Math.random() * 6 });
+}
+// Confetti burst: little paper rectangles in the game's colors
+function confetti(x, y, n = 26) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, sp = 140 + Math.random() * 260;
+    addPart({ kind: "paper", x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 160, g: 520, drag: 1.6, life: 1.1 + Math.random() * 0.5, age: 0,
+      w: 4 + Math.random() * 4, h: 2 + Math.random() * 3, rot: Math.random() * 6, vr: (Math.random() - 0.5) * 14, color: FX_COLORS[i % FX_COLORS.length] });
+  }
+}
+// Sparkles: four-pointed stars that grow and fade without falling
+function sparkle(x, y, n = 10, color = "#f4b740", radius = 60) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, d = Math.random() * radius;
+    addPart({ kind: "star", x: x + Math.cos(a) * d * 0.4, y: y + Math.sin(a) * d * 0.4, vx: Math.cos(a) * d * 1.2, vy: Math.sin(a) * d * 1.2 - 20,
+      g: 0, drag: 2.5, life: 0.6 + Math.random() * 0.5, age: 0, r: 4 + Math.random() * 5, color });
+  }
+}
+// An expanding ring, like a ripple, where something happened
+function ring(x, y, color = "#f4b740", size = 70) { addPart({ kind: "ring", x, y, vx: 0, vy: 0, g: 0, life: 0.5, age: 0, size, color }); }
+// A coin shower falling from the top of the screen (a sale)
+function coinRain(n = 60) {
+  for (let i = 0; i < n; i++) addPart({ kind: "coin", x: Math.random() * innerWidth, y: -20 - Math.random() * innerHeight * 0.5,
+    vx: (Math.random() - 0.5) * 60, vy: 100 + Math.random() * 200, g: 700, life: 2.2, age: 0, r: 6 + Math.random() * 3, spin: Math.random() * 6 });
+}
+// Public helper: a named celebration at an element (or a DOMRect / [x, y])
+function fxBurst(target, kind = "spark") {
+  let x, y;
+  if (Array.isArray(target)) [x, y] = target;
+  else { const r = target?.getBoundingClientRect ? target.getBoundingClientRect() : target; if (!r) return; x = r.left + r.width / 2; y = r.top + r.height / 2; }
+  if (kind === "buy") { confetti(x, y); ring(x, y, "#1d8656"); }
+  else if (kind === "sale") { coinRain(); ring(x, y, "#f4b740", 120); }
+  else if (kind === "coins") coinPop(x, y, 6, 200, 420);
+  else sparkle(x, y);
+}
+function clearFx() {
+  parts = [];
+  if (fxDirty) { fxCtx.setTransform(1, 0, 0, 1, 0, 0); fxCtx.clearRect(0, 0, fxCanvas.width, fxCanvas.height); fxDirty = false; }
+}
+// Move and draw every particle. Only runs while something is on screen.
+function drawFx(dt) {
+  if (!parts.length) { if (fxDirty) clearFx(); return; }
+  const dpr = window.devicePixelRatio || 1, w = innerWidth, h = innerHeight;
+  if (fxCanvas.width !== Math.round(w * dpr) || fxCanvas.height !== Math.round(h * dpr)) { fxCanvas.width = Math.round(w * dpr); fxCanvas.height = Math.round(h * dpr); }
+  const c = fxCtx;
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  c.clearRect(0, 0, w, h);
+  fxDirty = true;
+  for (const p of parts) {
+    p.age += dt;
+    if (p.drag) { const k = Math.exp(-p.drag * dt); p.vx *= k; p.vy *= k; }
+    p.vy += p.g * dt; p.x += p.vx * dt; p.y += p.vy * dt;
+    const left = 1 - p.age / p.life;
+    if (left <= 0) continue;
+    c.globalAlpha = Math.min(1, left * 2.5);              // fade out over the last 40%
+    if (p.kind === "coin") {
+      // a gold coin seen spinning: squash its width with the spin
+      p.spin += dt * 12;
+      const sx = Math.max(0.15, Math.abs(Math.cos(p.spin)));
+      c.fillStyle = "#b8840f"; c.beginPath(); c.ellipse(p.x, p.y, p.r * sx, p.r, 0, 0, Math.PI * 2); c.fill();
+      c.fillStyle = "#f4b740"; c.beginPath(); c.ellipse(p.x, p.y, p.r * sx * 0.78, p.r * 0.78, 0, 0, Math.PI * 2); c.fill();
+      if (sx > 0.5) { c.fillStyle = "#ffe39a"; c.fillRect(p.x - p.r * sx * 0.3, p.y - p.r * 0.45, Math.max(1, p.r * sx * 0.25), p.r * 0.5); }   // shine
+    } else if (p.kind === "paper") {
+      p.rot += p.vr * dt;
+      c.save(); c.translate(p.x, p.y); c.rotate(p.rot); c.scale(1, Math.cos(p.rot * 1.7));   // flutter
+      c.fillStyle = p.color; c.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); c.restore();
+    } else if (p.kind === "star") {
+      const r = p.r * (0.5 + Math.sin(Math.PI * (1 - left)) * 0.8);
+      c.fillStyle = p.color; c.beginPath();
+      for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4, rr = i % 2 ? r * 0.3 : r; c.lineTo(p.x + Math.cos(a) * rr, p.y + Math.sin(a) * rr); }
+      c.fill();
+    } else if (p.kind === "ring") {
+      c.strokeStyle = p.color; c.lineWidth = 3 * left;
+      c.beginPath(); c.arc(p.x, p.y, p.size * (1 - left * left), 0, Math.PI * 2); c.stroke();
+    }
+  }
+  c.globalAlpha = 1;
+  parts = parts.filter(p => p.age < p.life && p.y < h + 60);
+}
+
+// ----- Cash that counts up -----
+// The ticker shows shownCash() instead of the exact number. It chases the
+// real cash on a log scale, so a jump from $1K to $5M rolls up through
+// the thousands and millions in about a second, and spending $1B down to
+// $1K rolls down just as fast. Steady income looks the same as before.
+// Saves, prices and tests still use state.cash: this is only the display.
+let cashShown = null, cashShownAt = 0, cashState = null;
+function shownCash() {
+  const real = state.cash, t = performance.now();
+  const dt = Math.min(0.25, (t - cashShownAt) / 1000);
+  cashShownAt = t;
+  // calm mode, first frame, a whole new save, or anything odd (negative): show the exact number
+  if (motionCalm() || cashShown === null || cashState !== state || !(cashShown >= 0) || !(real >= 0)) { cashShown = real; cashState = state; return real; }
+  const from = Math.log1p(cashShown), to = Math.log1p(real);
+  const next = from + (to - from) * (1 - Math.exp(-dt * 10));
+  cashShown = Math.abs(to - next) < 2e-4 ? real : Math.expm1(next);   // close enough (0.02%): land on it
+  return cashShown;
+}
+// Flash the ticker for a moment: "gain" (green) or "spend" (red)
+let cashFlashTimer = 0;
+function flashCash(kind) {
+  const el = $("cash");
+  el.classList.remove("gain", "spend");
+  void el.offsetWidth;                     // restart the color transition
+  el.classList.add(kind);
+  clearTimeout(cashFlashTimer);
+  cashFlashTimer = setTimeout(() => el.classList.remove("gain", "spend"), 380);
+}
+
+// ----- Watching for things to celebrate -----
+let fxSnap = null;           // counters from last frame
+function fxCounters() {
+  let levels = 0;
+  const lv = new Map();
+  for (const b of state.biz) { levels += b.level; lv.set(b.id, b.level); }
+  return { state, cash: state.cash, taps: state.stats.taps, jobs: state.stats.jobs, bought: state.stats.bought, sold: state.stats.sold,
+    fixes: state.stats.fixes, upgrades: Object.keys(state.upgrades).length, levels, lv, ids: new Set(state.biz.map(b => b.id)) };
+}
+// Find a business's card on the Empire tab, if it's on screen
+const empireRow = id => document.querySelector(`#empireList .biz[data-id="${id}"]`);
+function flashRow(row, cls) {
+  if (!row) return;
+  row.classList.remove(cls); void row.offsetWidth; row.classList.add(cls);
+  setTimeout(() => row.classList.remove(cls), 1500);
+}
+
+function fxFrame(dt) {
+  const now = fxCounters();
+  const was = fxSnap;
+  fxSnap = now;
+  // First frame, or a different save swapped in: nothing to celebrate, just remember
+  if (!was || was.state !== now.state) { drawFx(dt); return; }
+  const calm = motionCalm();
+
+  // Hustles: a few coins from where you tapped (or the button, for keys/controller)
+  const taps = Math.min(4, now.taps - was.taps);
+  if (taps > 0 && !calm) {
+    const btn = $("hustle").getBoundingClientRect();
+    const fromTap = lastPress && lastPress.onHustle && performance.now() - lastPress.t < 300;
+    const x = fromTap ? lastPress.x : btn.left + btn.width / 2, y = fromTap ? lastPress.y : btn.top + 8;
+    for (let i = 0; i < taps; i++) coinPop(x, y, 2 + (Math.random() < 0.5 ? 1 : 0));
+    if (now.jobs > was.jobs) { coinPop(x, y, 10, 260, 480); ring(x, y); }      // a finished job: bigger shower
+  }
+
+  // Bought a business: confetti where you pressed, and its card glows
+  if (now.bought > was.bought) {
+    if (!calm) fxBurst(pressPoint($("pane-deals")), "buy");
+    const newIds = [...now.ids].filter(id => !was.ids.has(id));
+    setTimeout(() => newIds.forEach(id => flashRow(empireRow(id), "is-new")), 30);   // after the list rebuilds
+  }
+  // Expanded (levels went up without a new purchase)
+  else if (now.levels > was.levels) {
+    let milestone = 0, grownId = 0;
+    for (const [id, level] of now.lv) {
+      const before = was.lv.get(id) ?? level;
+      if (level > before) { grownId = id; if (LEVEL_MILESTONES.some(m => before < m && level >= m)) milestone = id; }
+    }
+    const row = empireRow(milestone || grownId);
+    const at = pressPoint(row);
+    if (!calm) { coinPop(at[0], at[1], 4, 160, 300); if (milestone) { sparkle(at[0], at[1], 16, "#f4b740", 90); ring(at[0], at[1]); } }
+    if (milestone) flashRow(row, "bump");
+  }
+
+  if (now.upgrades > was.upgrades && !calm) { const at = pressPoint(null); sparkle(at[0], at[1], 14); ring(at[0], at[1], "#8e5ba8"); }
+  if (now.fixes > was.fixes && !calm) { const r = $("skyline").getBoundingClientRect(); sparkle(r.left + r.width / 2, r.top + r.height / 2, 16, "#7fe0a3", r.width / 3); }
+  if (now.sold > was.sold && !calm) fxBurst([innerWidth / 2, innerHeight / 2], "sale");
+
+  // The cash flash: big jumps that aren't ordinary income
+  const diff = now.cash - was.cash;
+  const usual = (incomeNow() + investNet()) * Math.max(dt, 1 / 30) * 3 + tapValue() * 4 * (1 + JOB_BONUS);
+  if (diff < -Math.max(0.5, usual * 0.1)) flashCash("spend");
+  else if (diff > usual && diff > Math.abs(was.cash) * 0.02) flashCash("gain");
+
+  drawFx(dt);
+}
+
+// ----- Sparkline: a small price chart for investment cards -----
+// canvas: a <canvas> inside a sized box (e.g. <div class="chart">).
+// values: numbers, oldest first. Line is green if it ended up, red if down.
+function sparkline(canvasEl, values, opts = {}) {
+  const c = canvasEl.getContext("2d"), dpr = window.devicePixelRatio || 1;
+  const w = canvasEl.clientWidth, h = canvasEl.clientHeight;
+  if (!w || !h) return;
+  if (canvasEl.width !== Math.round(w * dpr) || canvasEl.height !== Math.round(h * dpr)) { canvasEl.width = Math.round(w * dpr); canvasEl.height = Math.round(h * dpr); }
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  c.clearRect(0, 0, w, h);
+  const v = (values || []).filter(Number.isFinite);
+  if (v.length < 2) return;
+  let lo = Math.min(...v), hi = Math.max(...v);
+  if (hi === lo) { hi += 1; lo -= 1; }                    // a flat line sits in the middle instead of dividing by zero
+  const pad = 4, X = i => pad + i / (v.length - 1) * (w - pad * 2), Y = n => h - pad - (n - lo) / (hi - lo) * (h - pad * 2);
+  const color = opts.color || (v[v.length - 1] >= v[0] ? "#1d8656" : "#c0433a");
+  c.beginPath(); v.forEach((n, i) => (i ? c.lineTo(X(i), Y(n)) : c.moveTo(X(i), Y(n))));
+  c.strokeStyle = color; c.lineWidth = 2; c.lineJoin = "round"; c.stroke();
+  c.lineTo(X(v.length - 1), h); c.lineTo(X(0), h); c.closePath();      // soft fill under the line
+  c.globalAlpha = 0.12; c.fillStyle = color; c.fill(); c.globalAlpha = 1;
+  c.fillStyle = color; c.beginPath(); c.arc(X(v.length - 1), Y(v[v.length - 1]), 3, 0, Math.PI * 2); c.fill();   // today's dot
+}
+
+applyLook();
 
 
 /* =====================================================================

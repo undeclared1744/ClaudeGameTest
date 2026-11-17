@@ -22,8 +22,9 @@
      08-save.js         - this browser + your Claude account (syncs devices)
      09-screen.js       - numbers, the Deals / Empire / Upgrades / Retire / Stats tabs
      10-sheet.js        - the Manage sheet for one business, and the fix-up mini games
-     11-skyline.js      - the night skyline drawing
+     11-skyline.js      - the skyline drawing and the day/night cycle
      12-controls.js     - touch/mouse, keyboard, game controller
+     13-fx.js           - motion and feedback (coins, confetti, cash count-up), Look and feel settings
      20-invest.js       - the plug-in point for every investment type, and the Invest tab
      30-investments/    - one file per investment type (real estate, stocks, ...)
      99-start.js        - start up, and handles for the automated tests

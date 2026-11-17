@@ -3,10 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0e1524">
 <title>Self-Made Tycoon</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<!-- Fonts: Bricolage Grotesque (headings + body; its width axis gives the
+     condensed headings) and JetBrains Mono (every number). If they can't
+     load (offline), the CSS falls back to the device's own fonts. -->
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 /*@@CSS@@*/</style>
 </head>
@@ -49,13 +53,15 @@
 
   <!-- ================= RIGHT: THE LEDGER ================= -->
   <section class="ledger">
-    <div class="tabs" role="tablist">
+    <div class="tabs">
+     <div class="tabrow" role="tablist">
       <button class="tab cond" role="tab" id="tab-deals" data-pane="deals" aria-selected="true">Deals<span class="badge" id="dealBadge" hidden>0</span></button>
       <button class="tab cond" role="tab" id="tab-empire" data-pane="empire" aria-selected="false">Empire</button>
       <button class="tab cond" role="tab" id="tab-invest" data-pane="invest" aria-selected="false" hidden>Invest</button>
       <button class="tab cond" role="tab" id="tab-upg" data-pane="upg" aria-selected="false">Upgrades<span class="badge" id="upgBadge" hidden>0</span></button>
       <button class="tab cond" role="tab" id="tab-retire" data-pane="retire" aria-selected="false">Retire</button>
       <button class="tab cond" role="tab" id="tab-set" data-pane="set" aria-selected="false">Stats</button>
+     </div>
       <div class="buymode" id="buymode" aria-label="How many levels to expand at once">
         Expand
         <button id="bm1" data-mode="1" aria-pressed="true">x1</button>
@@ -96,6 +102,23 @@
     </div>
     <div class="pane" id="pane-set">
       <div class="card"><h2 class="cond">Stats</h2><dl class="stats" id="stats"></dl></div>
+      <div class="card" id="lookCard">
+        <h2 class="cond">Look and feel</h2>
+        <p class="note">Saved on this device only.</p>
+        <div class="setting"><span>Sky</span>
+          <div class="seg" role="group" aria-label="Sky">
+            <button data-sky="cycle" aria-pressed="true">Day/night</button>
+            <button data-sky="clock" aria-pressed="false">My clock</button>
+            <button data-sky="day" aria-pressed="false">Day</button>
+            <button data-sky="night" aria-pressed="false">Night</button>
+          </div></div>
+        <div class="setting"><span>Motion</span>
+          <div class="seg" role="group" aria-label="Motion">
+            <button data-motion="auto" aria-pressed="true">Like my device</button>
+            <button data-motion="full" aria-pressed="false">Full</button>
+            <button data-motion="calm" aria-pressed="false">Calm</button>
+          </div></div>
+      </div>
       <div class="card">
         <h2 class="cond">Your save</h2>
         <p>The game saves itself every 30 seconds and when you leave.</p>
@@ -129,6 +152,9 @@
   </div>
 </div>
 <div class="toast" id="toast"></div>
+<!-- Effects layer: coin pops, confetti and sparkles are drawn here (13-fx.js).
+     It covers the screen but ignores taps. -->
+<canvas id="fx" aria-hidden="true"></canvas>
 
 <script>
 /*@@JS@@*/</script>
