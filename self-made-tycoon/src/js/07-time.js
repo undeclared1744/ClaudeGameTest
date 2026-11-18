@@ -55,6 +55,7 @@ function frame(nowPerf) {
   finishProjects(now);
   investTick(now);
   updateEvent(now);
+  updateRush(now);                   // rush orders in an open business (15-runit.js)
   render(false);
   if (nowPerf - lastSlowRender > 250) { lastSlowRender = nowPerf; render(true); }
   drawSkyline(dt);

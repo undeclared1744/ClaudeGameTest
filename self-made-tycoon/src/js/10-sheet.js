@@ -1,24 +1,37 @@
 // ---------- The business sheet: manage one business ----------
-// A pop-up card for one business you own: what it's worth, what's wrong
-// with it, buttons to fix things, and a button to sell it. The mini games
-// play inside this same card.
+// A pop-up card for one business you own, with two views you switch
+// between with the buttons at the top:
+//   "Run it"     - the incremental game inside the business (15-runit.js)
+//   "Fix & sell" - what it's worth, what's wrong with it, buttons to fix
+//                  things, and a button to sell it. The fix-up mini games
+//                  play inside this same card.
 let sheetBizId = 0;          // business shown on the sheet (0 = closed)
-let sheetMode = "info";      // "info" or "game" (a mini game is running)
+let sheetMode = "info";      // "run", "info" (Fix & sell) or "game" (a fix-up mini game is running)
 let gameCleanup = null;      // stops a running mini game's timers
 const sheetOpen = () => $("sheetBack").classList.contains("on");
 
-function openSheet(id) {
+// mode: "run" (the Run it button) or "info" (the Manage button)
+function openSheet(id, mode = "info") {
+  const b = state.biz.find(x => x.id === id);
+  if (b && !Array.isArray(b.crew)) runDefaults(b);      // a business from a test or an odd save: give it a crew list
   sheetBizId = id;
-  sheetMode = "info";
+  sheetMode = mode === "run" ? "run" : "info";
+  runKey = ""; sheetKey = "";
+  runRush = null;
+  runRushNextAt = Date.now() + runRushGap();             // first rush order a little while after you walk in
   $("sheetBack").classList.add("on");
   renderSheet();
-  const first = $("sheetBody").querySelector("button:not([aria-disabled='true'])") || $("sheetClose");
+  // Focus: the work button in Run it; otherwise the first fix/sell button
+  // (not the view switch, so A on a controller does something useful).
+  const first = (sheetMode === "run" && $("runTap")) ||
+    $("sheetBody").querySelector("button:not(.vs-btn):not([aria-disabled='true'])") || $("sheetClose");
   first.focus();
 }
 function closeSheet() {
   if (gameCleanup) { gameCleanup(); gameCleanup = null; }
   sheetBizId = 0;
   sheetMode = "info";
+  runRush = null;
   $("sheetBack").classList.remove("on");
   render(true);
 }
@@ -27,6 +40,7 @@ function closeSheet() {
 // focus on the same button across redraws.
 let sheetKey = "";
 function renderSheet(force = true) {
+  if (sheetOpen() && sheetMode === "run") { renderRun(force); return; }   // the Run it view draws itself
   if (!sheetOpen() || sheetMode !== "info") return;
   const b = state.biz.find(x => x.id === sheetBizId);
   if (!b) { closeSheet(); return; }
@@ -49,15 +63,17 @@ function renderSheet(force = true) {
     return `<li><span class="chip bad">${esc(P.name)}</span>${P.hidden ? ' <small class="muted">(hidden by the seller)</small>' : ""}<div>${btn}</div></li>`;
   }).join("");
   const profit = value - b.paid;
+  // Buyers pay extra for a crew that runs it without you (15-runit.js)
+  const crewNote = runSaleMult(b) > 1.005 ? ` (that includes +${Math.round((runSaleMult(b) - 1) * 100)}% for the crew you built)` : "";
   let sell;
   if (b.selling) sell = `<p>On the market. A buyer turns up in <strong>${duration(b.selling.until - now)}</strong>.</p>
       <button class="bigbtn cond" id="sellCancel">Take it off the market</button>`;
-  else sell = `<p>A buyer would pay about <strong>${money(value)}</strong> after fees.
+  else sell = `<p>A buyer would pay about <strong>${money(value)}</strong> after fees${crewNote}.
       You've put in ${money(b.paid)}, so that's a <strong class="${profit >= 0 ? "up" : "down"}">${profit >= 0 ? "profit" : "loss"} of ${money(Math.abs(profit))}</strong>.
       Finding a buyer takes about ${duration(sellSeconds(b) * 1000)}; it keeps earning until then.</p>
       <button class="bigbtn go cond" id="sellBtn">List it for sale</button>`;
-  const html = `<p class="sub">${esc(ind.name)} · ${esc(b.city)} · ${esc(LOCATIONS[b.loc].name)} · ${esc(QUIRKS[b.quirk].name)} · Lv ${b.level}</p>
-    <p>Earns <strong>${money(bizIncome(b) * tempMult(b, now))}/sec</strong> for you.</p>
+  const html = `${sheetSwitchHtml("info")}<p class="sub">${esc(ind.name)} · ${esc(b.city)} · ${esc(LOCATIONS[b.loc].name)} · ${esc(QUIRKS[b.quirk].name)} · Lv ${b.level}</p>
+    <p>Earns <strong>${money(bizIncome(b) * tempMult(b, now))}/sec</strong> for you. Crew: <strong>${esc(RUN_STAGES[runStage(b)].name.toLowerCase())}</strong> (+${Math.round(crewBonus(b) * 100)}%).</p>
     <h3 class="cond">Problems</h3>
     ${probs.length ? `<ul class="probs">${rows}</ul><p class="note">Fixing one: pass a quick challenge, pay for the work, then wait for it to finish. A fixed business earns more and sells for more.</p>`
                    : `<p class="note">Nothing wrong here. Buyers like that.</p>`}
@@ -65,11 +81,12 @@ function renderSheet(force = true) {
   if (!force && html === sheetKey) return;
   sheetKey = html;
   $("sheetBody").innerHTML = html;
+  wireSheetSwitch(b.id);
   for (const btn of $("sheetBody").querySelectorAll("[data-fix]")) btn.addEventListener("click", () => tryFix(b.id, btn.dataset.fix));
   $("sellBtn")?.addEventListener("click", () => armOrRun($("sellBtn"), "Tap again to list it", () => { listForSale(b.id); renderSheet(); }));
   $("sellCancel")?.addEventListener("click", () => { cancelSale(b.id); renderSheet(); });
   if (focusId && $(focusId)) $(focusId).focus();
-  else if (sheetOpen() && !$("sheetBack").contains(document.activeElement)) ($("sheetBody").querySelector("button") || $("sheetClose")).focus();
+  else if (sheetOpen() && !$("sheetBack").contains(document.activeElement)) ($("sheetBody").querySelector("button:not(.vs-btn)") || $("sheetClose")).focus();
 }
 // Fix button: renovations just start; everything else plays its mini game first.
 function tryFix(id, p) {
@@ -90,7 +107,7 @@ function tryFix(id, p) {
     }
     sheetMode = "info";
     renderSheet();
-    ($("sheetBody").querySelector("button") || $("sheetClose")).focus();
+    ($("sheetBody").querySelector("button:not(.vs-btn)") || $("sheetClose")).focus();
   });
 }
 

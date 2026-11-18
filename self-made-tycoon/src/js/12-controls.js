@@ -4,6 +4,10 @@
              1-6 = tabs, O = take the offer (first event choice).
    Controller: A = press, X = hustle, B = take the offer, LB/RB = tabs,
                Y = expand amount, D-pad/left stick = move between buttons.
+   Inside a business's "Run it" view (15-runit.js):
+     Keyboard:   Space or X = work, R = take a rush order, Escape = close.
+     Controller: X = work, RB = take a rush order, Y = hire x1/x10/Max,
+                 A = press the focused button, B = close.
    ===================================================================== */
 $("hustle").addEventListener("pointerdown", e => {
   e.preventDefault();
@@ -37,7 +41,8 @@ for (const b of document.querySelectorAll("#buymode button")) b.addEventListener
 function cycleBuyMode() {
   const modes = ["1", "10", "max"];
   setBuyMode(modes[(modes.indexOf(state.buyMode) + 1) % 3]);
-  toast("Expanding " + (state.buyMode === "max" ? "as many levels as you can afford" : "x" + state.buyMode));
+  const what = sheetOpen() && sheetMode === "run" ? "Hiring " : "Expanding ";   // inside a business, Y sets how many crew you hire
+  toast(what + (state.buyMode === "max" ? "as many as you can afford" : "x" + state.buyMode));
 }
 
 // Two-press buttons (the page can't show a browser "Are you sure?" box)
@@ -78,6 +83,13 @@ document.addEventListener("keydown", e => {
     const map = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" };
     if (map[e.key]) { e.preventDefault(); moveFocus(map[e.key]); }
     if (e.key === "Escape") closeSheet();
+    if (sheetMode === "run") {   // the game inside the business
+      // Space presses whatever button has focus (the browser does that);
+      // with nothing focused, or X at any time, it's the work button.
+      const onButton = document.activeElement?.tagName === "BUTTON";
+      if ((e.key === " " && !onButton) || e.key === "x" || e.key === "X") { e.preventDefault(); if (!e.repeat) runTap(sheetBizId); }
+      if (e.key === "r" || e.key === "R") takeRush();
+    }
     return;
   }
   const map = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" };
@@ -122,6 +134,11 @@ function pollGamepads() {
     else if (sheetOpen()) {     // business sheet: A presses, B closes, D-pad moves
       if (pressed(0)) { const el = document.activeElement; if (el && el.tagName === "BUTTON" && $("sheetBack").contains(el)) el.click(); }
       if (pressed(1)) closeSheet();
+      if (sheetMode === "run") {     // the game inside the business (15-runit.js)
+        if (pressed(2)) runTap(sheetBizId);
+        if (pressed(5)) takeRush();
+        if (pressed(3)) { cycleBuyMode(); renderRun(); }
+      }
       if (pressed(12)) moveFocus("up");
       if (pressed(13)) moveFocus("down");
       if (pressed(14)) moveFocus("left");

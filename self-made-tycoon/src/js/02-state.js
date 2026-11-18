@@ -23,7 +23,9 @@ function freshState(keepLegacy = 0, keepEarnedAll = 0, keepStats = {}, keepScout
     jobStep: 0, gig: 0,         // progress on the current hustle job
     nextEventAt: now + 60e3,    // first event comes after a minute
     boomUntil: 0,               // "hot economy" event: everything pays more until then
-    stats: Object.assign({ taps: 0, jobs: 0, bought: 0, events: 0, retires: 0, checks: 0, fixes: 0, sold: 0, flipProfit: 0, startedAt: now }, keepStats),
+    stats: Object.assign({ taps: 0, jobs: 0, bought: 0, events: 0, retires: 0, checks: 0, fixes: 0, sold: 0, flipProfit: 0,
+      runTaps: 0, runJobs: 0, runRushes: 0, crew: 0, gear: 0,    // the games inside each business (15-runit.js)
+      startedAt: now }, keepStats),
     buyMode: "1",
     savedAt: now,
     lastTick: now,
