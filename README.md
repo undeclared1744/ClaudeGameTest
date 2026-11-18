@@ -51,6 +51,9 @@ These were real bugs or problems found by the tests or the screenshot review bef
   - Loading a different save (retiring, wiping, a save code, or account sync) would have set off confetti and coin showers for every "new" business, and raised the whole skyline from the ground. The effects now notice a swapped save and stay quiet.
   - Buying a business rebuilds the deals list, so the button you tapped is gone before the effect can find it. Tap positions are now noted before the button reacts.
   - After loans, stocks and bonds arrived, the Invest tab made six tabs, and on the Steam Deck the Stats tab wrapped onto a second row. Tabs now stay in one row (and scroll sideways if they ever run out of room).
+  - Run it (the game inside each business): the first balance had crew priced by what the business is worth, so a hire always paid back at the same speed while expanding kept getting dearer. The robot reached the global tier in 29 minutes instead of 2¼ hours. Crew is now priced in levels of the business (on the same curve as expanding) and each hire costs 20% more, not 15%.
+  - Run it: a check that hiring then selling can't make money first reported a 12x return, because it measured a level-60 business you didn't actually own (so one more level looked cheap). Measured properly, a buyer's +50% returns at most 6% of what the crew cost.
+  - Run it, phone: the hire buttons dropped under each role (the phone layout does that to every buy button), and the job counter "5 / 10" wrapped onto two lines.
   - At dusk on the Steam Deck, the decorative far-off city behind your buildings was tall and bright enough to compete with your own skyline. It was made lower and fainter.
 
 ## What hasn't been tested

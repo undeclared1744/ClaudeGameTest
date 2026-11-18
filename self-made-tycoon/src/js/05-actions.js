@@ -33,21 +33,21 @@ function buyListing(i) {
   const price = listingPrice(l);
   if (price > state.cash) { toast("Not enough cash yet"); return false; }
   state.cash -= price;
-  state.biz.push({
+  state.biz.push(runDefaults({     // runDefaults: crew, gear and job for the game inside it (15-runit.js)
     id: state.nextBizId++, ind: l.ind, name: l.name, city: l.city, loc: l.loc, quirk: l.quirk,
     incMult: l.incMult, level: 1, paid: price, viralUntil: 0, inspectUntil: 0,
     hidden: l.hidden || null,      // you find out about a hidden problem the day you take over
     fixing: null,                  // { p: problem id, until } while repair work is under way
     selling: null,                 // { until } while it's on the market
     fixRetryAt: 0,                 // after a failed mini game, when you can try again
-  });
+  }));
   state.stats.bought++;
   gainScoutXp("buy");
   state.deals[i] = makeListing(i < Math.ceil(state.deals.length / 2) ? "top" : "any");   // a new listing takes its place
   dealsKey = "";
   if (l.hidden && !l.checked) showModal("Surprise!", `You took over ${l.name} and found out the seller left something out: ${PROBLEMS[l.hidden].name.toLowerCase()}. ` +
     "It earns less until you fix it (Empire tab, Manage). Next time, due diligence would have caught it.", "");
-  else toast(`You bought ${l.name}`);
+  else toast(`You bought ${l.name}. Run it from the Empire tab: hire a crew, buy gear, work a shift.`);
   dirty = true;
   render(true);
   return true;

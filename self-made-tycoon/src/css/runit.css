@@ -1,0 +1,61 @@
+/* =====================================================================
+   RUN IT: the game inside each business (15-runit.js)
+   Lives in the business sheet. Uses the same tokens as style.css: the
+   work button borrows the gold Hustle button look so it reads as "this
+   is where you tap", the crew rows look like the Empire cards.
+   ===================================================================== */
+
+/* The two views at the top of the sheet: Run it | Fix & sell */
+.vswitch { display: flex; gap: 6px; background: var(--paper-2); padding: 4px; border-radius: 12px; }
+.vs-btn {
+  flex: 1; appearance: none; border: 0; border-radius: 9px; padding: 8px 10px; cursor: pointer; background: transparent;
+  font: 800 17px var(--display); font-stretch: 75%; text-transform: uppercase; color: var(--muted);
+}
+.vs-btn[aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: inset 0 -3px 0 var(--gold), var(--shadow-1); }
+
+/* Empire card: the Run it button is the main one */
+.biz .acts .smallbtn.runit { background: var(--gold); border-color: var(--gold-deep); color: var(--night); font-weight: 800; }
+
+.run-stage { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.run-stage .note { margin: 0; }
+
+/* Your own work: job, progress bar, big gold button */
+.run-work { position: relative; display: grid; gap: 6px; background: var(--night); border-radius: var(--r-card); padding: 10px 12px 14px; }
+.run-job { display: flex; justify-content: space-between; gap: 10px; font: 13px var(--mono); color: #c9d2e3; }
+.run-job .num { white-space: nowrap; flex: none; }   /* keep "5 / 10" on one line when the job name wraps */
+.run-bar { height: 7px; background: var(--night-3); border-radius: 4px; overflow: hidden; }
+.run-bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--gold), #ffd987); border-radius: 4px; transition: width .12s ease-out; }
+.hustle.run-btn { font-size: 30px; padding: 12px; margin-top: 4px; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+.hustle.run-btn small { font-size: 13px; }
+.run-floats { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+
+/* Rush order: a green button with its own countdown */
+.run-rush { display: flex; gap: 8px; align-items: center; animation: slide-up .25s ease-out; }
+.run-rush .bigbtn { flex: 1; text-align: left; font-size: 15px; line-height: 1.25; animation: rush-pulse 1.2s ease-in-out infinite; }
+.run-rush .num { font: 700 15px var(--mono); color: var(--loss); }
+@keyframes rush-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(29, 134, 86, .5); } 50% { box-shadow: 0 0 0 6px rgba(29, 134, 86, 0); } }
+
+/* Crew and gear lists */
+.run-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 8px; flex-wrap: wrap; }
+.run-mode { display: flex; gap: 4px; align-items: center; font-size: 13px; color: var(--muted); }
+.run-mode button { appearance: none; border: 2px solid var(--ink); background: transparent; border-radius: 8px; padding: 2px 8px; font: 700 13px var(--body); cursor: pointer; color: var(--ink); }
+.run-mode button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.crew-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.crew-row, .gear-row {
+  display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center;
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 12px; padding: 8px 10px 8px 14px;
+  box-shadow: inset 4px 0 0 var(--rule);
+}
+.crew-row:has(.affordable), .gear-row:has(.affordable) { box-shadow: inset 4px 0 0 var(--money); }
+.gear-row.owned { box-shadow: inset 4px 0 0 var(--gold); }
+.crew-n { font-size: 14px; color: var(--muted); margin-left: 4px; }
+.crew-sub { font-size: 13px; color: var(--muted); }
+.run-buy { min-width: 108px; }
+.run-pad { color: var(--muted); }
+
+@media (max-width: 760px) {
+  .hustle.run-btn { font-size: 26px; padding: 10px; }
+  .vs-btn { font-size: 16px; padding: 7px 8px; }
+  .crew-row, .gear-row { padding: 8px 8px 8px 12px; gap: 8px; }
+  .crew-row .run-buy, .gear-row .run-buy { grid-column: auto; order: 0; min-width: 96px; }   /* style.css puts .buy on its own row on phones; keep these beside their row */
+}
