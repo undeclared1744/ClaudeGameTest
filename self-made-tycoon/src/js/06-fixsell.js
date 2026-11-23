@@ -22,8 +22,10 @@ const hiddenMult = b => (b.hidden && PROBLEMS[b.hidden] ? PROBLEMS[b.hidden].pen
 // this one does (location, quirk, hidden problem), times its size (levels,
 // with the milestone doublings). Your own upgrades, sector bonuses and
 // Legacy stars don't come with the sale, so they don't count.
+// The crew you hired DOES come with it: a business that runs without its
+// owner sells for more (runSaleMult, capped at +50%: see 14-runit-data.js).
 function saleValue(b) {
-  return IND[b.ind].cost * b.incMult * hiddenMult(b) * levelMult(b.level) * SALE_MULT;
+  return IND[b.ind].cost * b.incMult * hiddenMult(b) * levelMult(b.level) * runSaleMult(b) * SALE_MULT;
 }
 // What fixing problem p at business b costs, and how long the work takes
 function fixCost(b, p) {

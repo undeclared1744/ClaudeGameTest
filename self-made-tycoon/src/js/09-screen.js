@@ -123,9 +123,10 @@ function updateEmpire() {
         <div class="sub">${esc(ind.name)} · ${esc(b.city)} · ${esc(LOCATIONS[b.loc].name)}${b.quirk ? " · " + esc(QUIRKS[b.quirk].name) : ""}</div></div>
         <button class="buy" id="exp-${b.id}"><span class="pr"></span><small class="ct"></small></button>
         <div class="chips"></div><div class="line"></div>
-        <div class="acts"><button class="smallbtn" id="mng-${b.id}">Manage · fix · sell</button></div>`;
+        <div class="acts"><button class="smallbtn runit" id="run-${b.id}">Run it</button><button class="smallbtn" id="mng-${b.id}">Fix · sell</button></div>`;
       row.querySelector(".buy").addEventListener("click", () => expandBiz(b.id));
-      row.querySelector(".acts button").addEventListener("click", () => openSheet(b.id));
+      row.querySelector(`#run-${b.id}`).addEventListener("click", () => openSheet(b.id, "run"));   // the game inside it (15-runit.js)
+      row.querySelector(`#mng-${b.id}`).addEventListener("click", () => openSheet(b.id));
       list.appendChild(row);
     }
   }
@@ -144,6 +145,8 @@ function updateEmpire() {
     if (now < b.inspectUntil) chips.push(`<span class="chip bad">Half income ${duration(b.inspectUntil - now)}</span>`);
     if (b.fixing) chips.push(`<span class="chip">Fixing: done in ${duration(b.fixing.until - now)}</span>`);
     if (b.selling) chips.push(`<span class="chip great">For sale: buyer in ${duration(b.selling.until - now)}</span>`);
+    const stage = b.crew ? runStage(b) : 0;
+    if (stage >= 2) chips.push(`<span class="chip great">${esc(RUN_STAGES[stage].name)}</span>`);
     for (const p of problemsOf(b)) if (!(b.fixing && b.fixing.p === p)) chips.push(`<span class="chip bad">${esc(PROBLEMS[p].name)}</span>`);
     const chipBox = row.querySelector(".chips");
     const html = chips.join("");
@@ -215,6 +218,9 @@ function updateStats() {
     ["Legacy", `★ ${state.legacy} (+${Math.round(state.legacy * LEGACY_BONUS * 100)}%)`],
     ["Deal sense", `${SCOUT_LEVELS[scoutLevel()].name} (${state.scoutXp || 0} XP)`],
     ["Hustles", state.stats.taps.toLocaleString("en-US")], ["Jobs finished", state.stats.jobs.toLocaleString("en-US")],
+    // the games inside each business (15-runit.js)
+    ["Work done in your businesses (presses)", (state.stats.runTaps || 0).toLocaleString("en-US")], ["Crew hired", (state.stats.crew || 0).toLocaleString("en-US")],
+    ["Rush orders taken", (state.stats.runRushes || 0).toLocaleString("en-US")],
     ["Businesses bought", state.stats.bought], ["Businesses sold", state.stats.sold],
     ["Profit from selling", money(state.stats.flipProfit)], ["Problems fixed", state.stats.fixes], ["Due diligence checks", state.stats.checks],
     ["Events answered", state.stats.events], ["Times retired", state.stats.retires],

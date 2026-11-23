@@ -28,5 +28,9 @@ window.T = { get state() { return state; }, set state(s) { state = s; }, INDUSTR
   tierUnlocked, sectorLevels, problemsOf, saleValue, fixCost, checkListing, startFix, finishProjects, listForSale, cancelSale, openSheet, closeSheet,
   tryFix, PROBLEMS, QUIRKS, LOCS: LOCATIONS, SCOUT_LEVELS, scoutLevel, gainScoutXp, ddCost,
   MODULES, inv, registerInvestment, investEarn, investTick, investNet, updateInvest, showTab, tabOrder, addCash, money, duration, esc, pick, NAME_PARTS, TIERS,
+  // the game inside each business (15-runit.js)
+  runTap, hireCrew, buyGear, takeRush, crewCost, crewMaxAfford, crewBonus, crewAdds, crewMult, runStage, runSaleMult, runUnit, runTapValue, gearCost,
+  runDefaults, renderRun, setSheetMode, updateRush, RUN_THEMES, CREW_ROLES, GEAR_SLOTS, RUN_STAGES,
+  get runRush() { return runRush; }, set runRushNextAt(t) { runRushNextAt = t; }, get sheetMode() { return sheetMode; },
   get activeEvent() { return activeEvent; }, set activeEvent(e) { activeEvent = e; }, showEvent,
   invTests: Object.fromEntries(MODULES.map(m => [m.id, m.test || {}])) };   // each investment's own test handles: T.invTests.<id>

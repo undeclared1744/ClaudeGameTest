@@ -28,7 +28,7 @@ function validState(s) {
   // a negative cash total was "repaired" with itself and kept.)
   const out = Object.assign(freshState(), s);
   out.stats = Object.assign({}, base.stats, s.stats || {});
-  out.biz = s.biz.filter(b => b && IND[b.ind]).map(b => ({
+  out.biz = s.biz.filter(b => b && IND[b.ind]).map(b => runFromSave(b, {
     id: Number(b.id) || 0, ind: b.ind, name: String(b.name || IND[b.ind].name), city: String(b.city || ""),
     loc: Math.min(3, Math.max(0, b.loc | 0)), quirk: Math.min(QUIRKS.length - 1, Math.max(0, b.quirk | 0)),
     incMult: Number.isFinite(b.incMult) && b.incMult > 0 ? b.incMult : 1,
@@ -38,7 +38,7 @@ function validState(s) {
     fixing: b.fixing && PROBLEMS[b.fixing.p] && Number.isFinite(b.fixing.until) ? { p: b.fixing.p, until: b.fixing.until } : null,
     selling: b.selling && Number.isFinite(b.selling.until) ? { until: b.selling.until } : null,
     fixRetryAt: Number(b.fixRetryAt) || 0,
-  }));
+  }));    // runFromSave adds crew/gear/job (15-runit.js); saves from before it get an empty crew
   out.nextBizId = Math.max(Number(s.nextBizId) || 1, ...out.biz.map(b => b.id + 1), 1);
   out.deals = Array.isArray(s.deals) ? s.deals.filter(l => l && IND[l.ind] && Number.isFinite(l.priceMult) && Number.isFinite(l.incMult))
     .map(l => Object.assign({}, l, { hidden: PROBLEMS[l.hidden]?.hidden ? l.hidden : null, checked: !!l.checked, offMarket: !!l.offMarket })) : [];

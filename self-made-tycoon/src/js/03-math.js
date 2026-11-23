@@ -35,10 +35,11 @@ function levelMult(level) {
   for (const ms of LEVEL_MILESTONES) if (level >= ms) m *= 2;
   return m;
 }
-// One business's income per second, without temporary effects (viral, inspection, boom)
+// One business's income per second, without temporary effects (viral, inspection, boom).
+// crewMult: what the crew you hired inside the business adds (15-runit.js).
 function bizIncome(b) {
   const ind = IND[b.ind];
-  return ind.income * b.incMult * hiddenMult(b) * levelMult(b.level) * sectorMult(ind.sector) * globalMult();
+  return ind.income * b.incMult * hiddenMult(b) * levelMult(b.level) * crewMult(b) * sectorMult(ind.sector) * globalMult();
 }
 // Total steady income per second (no temporary effects)
 function baseIncome() {

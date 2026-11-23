@@ -14,13 +14,27 @@ Every business for sale is generated when it appears on the board:
 
 The location and quirk change the price and the income. Each listing is labelled as a steal, a good deal, a fair price or overpriced. The board leans toward industries you haven't built up yet.
 
+## Running each business (Run it)
+
+Every business you own has its own small incremental game inside it, in the spirit of Paper Jam Tycoon, themed to what that business does. Open it with the gold **Run it** button on its Empire card. It follows how a real owner grows a business they just bought:
+
+- **Do the work yourself:** a big work button themed to the business (Mow, Pull shot, Flip, Haul, Ship code, Launch...). Each press pays what a Hustle pays plus a slice of that business's income, and every 10 presses finishes a job (a themed one, like "Edge the church lawn") for a bonus.
+- **Hire a crew:** four roles per business, cheapest first (a lawn route goes Neighbor kid, Weekend helper, Crew lead, Second truck & trailer). Each hire adds a share to that business's income, the next one costs 20% more, and having 10, 25 and 50 of a role doubles what it adds. A new role unlocks after you hire 3 of the one before. Hire x1, x10 or Max (the same setting as Expand).
+- **Gear and systems:** three one-time upgrades per business: one doubles your own work there, two make the whole crew add more.
+- **Rush orders:** while you're on site, a themed rush order flashes up now and then ("A wedding venue needs a cut by noon"). Take it within 12 seconds for 30 seconds of that business's income.
+- **Runs without you:** as the crew grows the business goes from "You are the business" to "Small team", "Runs without you" and "Well-oiled machine". Buyers pay up to 50% more for one that runs without you.
+
+Crew and gear are priced in levels of the business (the first hire costs the same as expanding it once), so they get dearer as it grows, just like expanding. A hire is a poor deal on a brand-new business and a good one on a big business. All 33 kinds of business have their own words; the numbers are shared. Data is in `src/js/14-runit-data.js`, the engine in `src/js/15-runit.js`.
+
+The business card has a second view, **Fix & sell**, for the fix-ups and selling below.
+
 ## Fixing up and selling businesses
 
 Like a real small-business buyer, you can buy a business with problems cheaply, fix it, and sell it at a profit.
 
 - **Hidden problems:** about 1 in 4 listings hides something the seller doesn't mention, such as staff who keep quitting, back taxes or a leaky roof. It earns less than it looks.
 - **Due diligence:** pay 3% of the asking price to check a listing before you buy. Skip it and you might get a "Surprise!" the day you take over.
-- **Fix-ups:** every problem can be fixed from the business's **Manage** button. Each fix is a quick mini game, then paid work that takes longer for bigger businesses:
+- **Fix-ups:** every problem can be fixed from the business's **Fix · sell** button. Each fix is a quick mini game, then paid work that takes longer for bigger businesses:
   - *Answer the reviews:* pick the reply that wins back each angry customer.
   - *Clean up the books:* find the charge that was entered twice.
   - *Repair the machines:* press when the needle is in the green.
@@ -64,7 +78,9 @@ These are the robot's times when it taps 3 times a second. A person will be slow
 | Global (airline, bank, chip factory) | about 2¼ hours |
 | Retiring is worth about 10 stars | about 2¼ hours |
 
-`TIER_PAYBACK` and `UNIT_GROWTH` in `src/js/01-data.js` set the pace.
+Playing the game inside your businesses speeds that up. A robot that also hires crew, buys gear and does its tapping inside its best business reached Global in about 1½ hours (instead of 2¼). One that hires crew but stops tapping after 3 minutes is about 10% faster than the plain idle robot (noisy: the deals are random).
+
+`TIER_PAYBACK` and `UNIT_GROWTH` in `src/js/01-data.js` set the pace. For the game inside each business, `CREW_ROLES`, `CREW_GROWTH` and `RUN_TAP_SECONDS` in `src/js/14-runit-data.js` do.
 
 ## How the code fits together
 
@@ -76,6 +92,9 @@ src/css/style.css        all the styles
 src/js/00-…12-*.js       the core game: data, save, deals, businesses, fix-and-sell, screen, controls
 src/js/11-skyline.js     the skyline and the day/night cycle
 src/js/13-fx.js          motion and feedback (coins, confetti, cash count-up), Look and feel settings
+src/js/14-runit-data.js  the game inside each business: crew, gear, and the words for all 33 kinds
+src/js/15-runit.js       its engine, and the Run it view in the business card
+src/css/runit.css        its styles
 src/js/20-invest.js      the plug-in point for investments, and the Invest tab
 src/js/30-investments/   one file per investment type (real estate, loans, stocks, bonds,
                          startups, franchising, commodities, partnerships, crypto)
@@ -96,9 +115,10 @@ After editing anything in `src/`, run `python3 build.py`, then commit both `src/
 - `tests/play.py` runs 44 click-through checks and takes screenshots. It also generates 3000 listings to check every name and number.
 - `tests/business.py` runs 51 checks on hidden problems, due diligence, all four mini games, repairs and selling, on a Steam Deck sized screen and a phone.
 - `tests/scouting.py` runs 22 checks on Deal sense: XP, every level's perk, and keeping it through retiring and saving.
+- `tests/runit.py` runs 59 checks on the game inside each business: themes for every kind, working, jobs, hiring, roles unlocking, milestones, x10 and Max, gear, rush orders, the sale bonus (and that it can't be farmed), saving, keyboard, controller and the phone layout.
 - `tests/look.py` runs 37 checks on the day/night sky, the Look and feel settings, the effects (confetti, coins, cash count-up), calm mode, drawing speed, and the Steam Deck and phone layouts.
 - `tests/invest_host.py` runs 16 checks on the investment plug-in point, using a test investment, including that a broken one can't crash the game.
 - `tests/invest_loans.py` runs 47 checks on loans: the credit limit, interest, on-time and missed payments, the bank taking a business, bankruptcy, paying back, time away and saving.
 - `tests/invest_stocks.py` runs 33 checks on stocks: buying and selling, only profit counting as earned, growth and swings over 600 simulated periods, crashes and buying the dip, time away and saving.
 - `tests/invest_bonds.py` runs 35 checks on bonds and CDs: fixed interest, maturity, breaking a CD, corporate busts over 4000 bonds, the 8-bond limit, time away and saving.
-- `tests/sim.py` has a robot play 4 hours, both active and idle, and reports the pacing.
+- `tests/sim.py` has a robot play 4 hours, both active and idle, with and without running its businesses, and reports the pacing.
